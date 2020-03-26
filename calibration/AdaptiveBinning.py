@@ -61,8 +61,8 @@ def AdaptiveBinning(infer_results, show_reliability_diagram=True):
                 target_number_samples = float('inf')
 
                 # esla tmp
-                df = pd.Series(first_bin)
-                df.plot.hist()
+                #df = pd.Series(first_bin)
+                #df.plot.hist()
 
         num[ind] += 1
         confidence[ind] += confidence_score

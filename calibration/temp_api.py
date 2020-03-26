@@ -18,9 +18,9 @@ from .AdaptiveBinning import AdaptiveBinning
 #     AECE, AMCE, confidence, accuracy, cof_min, cof_max = AdaptiveBinning(infer_results, True)
 
 
-def get_adaptive_ece(logits, true_labels, pred_labels):
+def get_adaptive_ece(true_labels, pred_labels, max_softmax_scores):
 
-    max_softmax_values = list(np.max(logits, axis=1))
+
     labels_tuples = []
 
     # print(max_softmax_values)
@@ -29,7 +29,7 @@ def get_adaptive_ece(logits, true_labels, pred_labels):
 
     for i in range(len(true_labels)):
         correctness = true_labels[i] == pred_labels[i]
-        labels_tuples.append([max_softmax_values[i], correctness])
+        labels_tuples.append([max_softmax_scores[i], correctness])
 
     aece, amce, confidence, accuracy, min_confidence, max_confidence = AdaptiveBinning(labels_tuples,
                                                                                        show_reliability_diagram=False)
