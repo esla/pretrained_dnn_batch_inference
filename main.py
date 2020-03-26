@@ -32,6 +32,12 @@ from keras.utils.np_utils import to_categorical
 from calibration.temp_api import get_adaptive_ece
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score
 
+# esla introducing experimental loss functions
+from experimental_dl_codes.from_kaggle_post_focal_loss import FocalLoss as FocalLoss1
+from experimental_dl_codes.focal_loss_pytorch.focalloss import FocalLoss as FocalLoss2
+from experimental_dl_codes.RetinaNet.focal_loss import FocalLoss as FocalLoss3
+
+
 
 # Return network and file name
 def get_network(args, num_classes):
@@ -49,7 +55,7 @@ def get_network(args, num_classes):
         file_name = 'wide-resnet-' + str(args.depth) + 'x' + str(args.widen_factor)
     elif args.net_type == 'resnet18':
         file_name = 'resnet-18'
-        net = models.resnet18(pretrained=True)
+        net = models.resnet18(pretrained=False)
         net.fc = nn.Linear(net.fc.in_features, num_classes)
         aug['size'] = 224
         aug['mean'] = [0.485, 0.456, 0.406]
@@ -58,7 +64,7 @@ def get_network(args, num_classes):
 
     elif args.net_type == 'resnet50':
         file_name = 'resnet-50'
-        net = models.resnet50(pretrained=True)
+        net = models.resnet50(pretrained=False)
         net.fc = nn.Linear(net.fc.in_features, num_classes)
         aug['size'] = 224
         aug['mean'] = [0.485, 0.456, 0.406]
@@ -90,6 +96,14 @@ def train_model(net, epoch, args):
         inputs, targets = Variable(inputs), Variable(targets)
         outputs = net(inputs)  # Forward Propagation
         loss = criterion(outputs, targets)  # Loss
+        #print('esla1')
+        #loss1 = criterion1(outputs, targets)  # Loss
+        #print('esla2')
+        loss2 = criterion2(outputs, targets)  # Loss
+        #print('esla3')
+        loss3 = criterion3(outputs, targets)  # Loss
+        #print("loss ce: {}, loss f2: {}, loss f3: {}".format(loss, loss2, loss3))
+        loss = loss2
         loss.backward()  # Backward Propagation
         optimizer.step()  # Optimizer update
 
@@ -137,7 +151,12 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             outputs = net(inputs)
 
             if is_validation_mode:
-                loss = criterion(outputs, targets)
+                loss = criterion(outputs, targets)  # Loss
+                #loss1 = criterion1(outputs, targets)  # Loss
+                loss2 = criterion2(outputs, targets)  # Loss
+                loss3 = criterion3(outputs, targets)  # Loss
+                #print("loss ce: {}, loss f2: {}, loss f3: {}".format(loss, loss2, loss3))
+                loss = loss2
                 test_loss += loss.item()
 
             softmax_scores = F.softmax(outputs, dim=1)
@@ -454,6 +473,11 @@ if __name__ == '__main__':
         cudnn.benchmark = True
 
     criterion = nn.CrossEntropyLoss()
+    criterion1 = FocalLoss1()
+    criterion2 = FocalLoss2(2)
+    criterion3 = FocalLoss3(2, 1)
+
+
 
     print('\n[Phase 3] : Training model')
     print('| Training Epochs = ' + str(num_epochs))

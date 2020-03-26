@@ -2,5 +2,8 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/experimental_dl_codes/Loss_ToolBox-PyTorch" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/experimental_dl_codes/RetinaNet" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/experimental_dl_codes/focal_loss_pytorch" vcs="Git" />
   </component>
 </project>
