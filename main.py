@@ -17,6 +17,7 @@ import argparse
 import datetime
 import pandas as pd
 import pickle
+import csv
 
 from networks import *
 from torch.autograd import Variable
@@ -112,6 +113,10 @@ def train_model(net, epoch, args):
         total += targets.size(0)
         correct += predicted.eq(targets.data).cpu().sum()
 
+        # metrics
+        accuracy = 100. * correct / total
+        accuracy = accuracy.cpu().data.numpy()
+
         sys.stdout.write('\r')
         sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tLoss: %.4f Acc@1: %.3f%%'
                          % (epoch, num_epochs, batch_idx + 1,
@@ -121,6 +126,8 @@ def train_model(net, epoch, args):
     print('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tLoss: %.4f Acc@1: %.3f%%'
           % (epoch, num_epochs, batch_idx + 1,
              (len(train_set) // batch_size) + 1, loss.item(), 100. * correct / total))
+
+    return accuracy
 
 
 def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
@@ -141,6 +148,9 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     # dataframe to callect all results
     columns = ['ImageNames', 'TrueLabels', 'Logits', 'SoftmaxValues', 'PredictedLabels', 'PredictedProbs']
     df = pd.DataFrame(columns=columns)
+
+    # metrics data structure
+    metrics = {}
 
     with torch.no_grad():
         for batch_idx, data in enumerate(dataset_loader):
@@ -205,8 +215,15 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
 
     # TBD: get this into a metrics data structure and return it if testing labeled datasets
     accuracy = 100. * correct / total
+    accuracy = accuracy.cpu().data.numpy()
     balanced_accuracy = balanced_accuracy * 100
     auc = auc * 100
+
+    # get the results
+    metrics['accuracy'] = accuracy
+    metrics['balanced_accuracy'] = balanced_accuracy
+    metrics['auc'] = auc
+    metrics['ece'] = ece
 
     if is_validation_mode:
         print("\n| Validation Epoch #%d\t\t\tLoss: %.4f Acc@1: %.2f%% BalAcc@1: %.2f%% ECE: %.6f auc: %.2f%%" %
@@ -244,7 +261,7 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
 
             best_accuracy = accuracy
 
-    return df, logits, true_labels, pred_labels
+    return df, logits, true_labels, pred_labels, metrics
 
 
 if __name__ == '__main__':
@@ -406,7 +423,13 @@ if __name__ == '__main__':
             cudnn.benchmark = True
 
         print('\n=> Inference in Progress')
-        all_results_df, logits, true_labels, pred_labels = test_model(net, inference_loader)
+        all_results_df, logits, true_labels, pred_labels, metrics = test_model(net, inference_loader)
+
+        # write results
+        filename = "checkpoint" +"/" + args.dataset + "/" + "inference.csv"
+        with open(filename, 'a+') as infile:
+            csv_writer = csv.writer(infile, dialect='excel')
+            csv_writer.writerow(list(metrics.values()))
 
         # Save results to files
         dataset_category = 'inference'
@@ -477,8 +500,6 @@ if __name__ == '__main__':
     criterion2 = FocalLoss2(2)
     criterion3 = FocalLoss3(2, 1)
 
-
-
     print('\n[Phase 3] : Training model')
     print('| Training Epochs = ' + str(num_epochs))
     print('| Initial Learning Rate = ' + str(args.lr))
@@ -489,9 +510,21 @@ if __name__ == '__main__':
     for epoch in range(start_epoch, start_epoch + num_epochs):
         start_time = time.time()
 
-        train_model(net, epoch, args)
+        train_accuracy = train_model(net, epoch, args)
         # validate_model(net, epoch)
-        test_model(net, val_loader, epoch, is_validation_mode=True)
+        df, logits, true_labels, pred_labels, metrics = test_model(net, val_loader, epoch, is_validation_mode=True)
+
+        # write results
+        filename = "checkpoint" + "/" + args.dataset + "/" + "training_log.csv"
+        with open(filename, 'a+') as infile:
+            csv_writer = csv.writer(infile, dialect='excel')
+            if epoch == 1:
+                csv_writer.writerow(['epoch', 'train acc', 'val acc', 'val bal acc', 'val auc', 'val ece'])
+            csv_writer.writerow([epoch, train_accuracy] + list(metrics.values()))
+
+        filename = 'checkpoint/' + args.dataset + '/' + args.net_type + '-' + str(epoch) + '-' + 'val'
+        with open(filename + '.logits', 'wb') as f:
+            pickle.dump((true_labels, pred_labels, logits), f)
 
         epoch_time = time.time() - start_time
         elapsed_time += epoch_time
