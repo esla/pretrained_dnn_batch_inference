@@ -196,6 +196,46 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
         true_labels = all_targets.cpu().data.numpy().tolist()
         pred_labels = all_preds.cpu().data.numpy().tolist()
 
+    targets = all_targets.type('torch.FloatTensor').view(len(all_targets), 1).cuda()
+    preds = all_preds.type('torch.FloatTensor').view(len(all_preds), 1).cuda()
+    #print(all_logits[:10])
+    #print(targets[:10])
+    #print(preds[:10])
+
+    temp_result = torch.cat([all_logits, targets, preds], 1)
+
+    correct_cat = temp_result[:, :-1][temp_result[:, -1] == temp_result[:, -2]]
+    incorrect_cat = temp_result[:, :-1][temp_result[:, -1] != temp_result[:, -2]]
+
+    incorrect_outputs = incorrect_cat[:, :-1]
+    targets_for_incorrect = incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0].type('torch.LongTensor')
+
+    correct_outputs = correct_cat[:, :-1]
+    targets_for_correct = correct_cat[:, -1].view(1, len(correct_outputs))[0].type('torch.LongTensor')
+
+    # print(correct_outputs.device)
+    # print(targets_for_correct.device)
+    # print(incorrect_outputs.device)
+    # print(targets_for_incorrect.device)
+
+    loss_correctly_preds = criterion(correct_outputs, targets_for_correct.cuda())
+    #print("\n\n\n")
+    loss_incorrectly_preds = criterion(incorrect_outputs, targets_for_incorrect.cuda())
+
+    #print("\n Number in correctly and incorrectly predicted ")
+    #print(incorrect_outputs[:10])
+    #print(correct_outputs[:10])
+    #print(len(correct_outputs))
+    #print(len(incorrect_outputs))
+    #print(targets_for_incorrect)
+    #print(targets_for_correct)
+
+    # print("\n Partial Losses")
+    # print("Correctly Predicted: ", loss_correctly_preds.item())
+    # print("Incorrectly Predicted: ", loss_incorrectly_preds.item())
+    # print("requires grad: ", loss_correctly_preds.requires_grad)
+    # print("requires grad: ", loss_incorrectly_preds.requires_grad)
+
     max_softmax_scores = list(np.max(softmax_values, axis=1))
     # esla debug (alternative way to get the predicted labels
     all_preds = list(all_preds.cpu().data.numpy())
@@ -227,15 +267,22 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     # get the results
     metrics['accuracy'] = accuracy
     metrics['test_loss'] = test_loss / batch_idx
+    metrics['test_loss_corrects'] = loss_correctly_preds.item()
+    metrics['test_loss_incorrects'] = loss_incorrectly_preds.item()
     metrics['balanced_accuracy'] = balanced_accuracy
     metrics['auc'] = auc
     metrics['ece'] = ece
     
+    #if is_validation_mode:
+    #    print("\n| Validation Epoch #%d\t\t\tLoss: %.4f Acc@1: %.2f%% BalAcc@1: %.2f%% ECE: %.6f auc: %.2f%%" %
+    #          (epoch, test_loss / batch_idx, accuracy, balanced_accuracy, ece, auc))
+
     if is_validation_mode:
-        print("\n| Validation Epoch #%d\t\t\tLoss: %.4f Acc@1: %.2f%% BalAcc@1: %.2f%% ECE: %.6f auc: %.2f%%" %
-              (epoch, test_loss / batch_idx, accuracy, balanced_accuracy, ece, auc))
+        print("\n| Validation Epoch #%d\t| Loss: %.4f | Corr Loss: %.4f | Incorr Loss: %.4f | Acc@1: %.2f%% | BalAcc@1: %.2f%% "
+            "ECE: %.6f auc: %.2f%%" %
+            (epoch, test_loss / batch_idx, loss_correctly_preds.item(), loss_incorrectly_preds.item(), accuracy, balanced_accuracy, ece, auc))
     else:
-        print("\n| \t\t\t Acc@1: %.2f%% BalAcc@1: %.2f%% ECE: %.6f auc: %.2f%%" %
+        print("\n| \t\t\t Acc@1: %.2f%% | BalAcc@1: %.2f%% | ECE: %.6f | auc: %.2f%%" %
               (accuracy, balanced_accuracy, ece, auc))
 
     if is_validation_mode:
@@ -525,7 +572,8 @@ if __name__ == '__main__':
         with open(filename, 'a+') as infile:
             csv_writer = csv.writer(infile, dialect='excel')
             if epoch == 1:
-                csv_writer.writerow(['epoch', 'train_loss', 'train acc', 'val acc', 'val bal acc','val_loss', 'val auc', 'val ece'])
+                csv_writer.writerow(['epoch', 'train_loss', 'train_acc', 'val_acc', 'val_bal_acc', 
+                                    'val_loss', 'val_corr_loss', 'val_incorr_loss', 'val_auc', 'val_ece'])
             csv_writer.writerow([epoch] + list(train_metrics.values()) + list(val_metrics.values()))
 
         filename = 'checkpoint/' + args.dataset + '/' + args.net_type + '-' + str(epoch) + '-' + 'val'
