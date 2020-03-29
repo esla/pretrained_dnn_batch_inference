@@ -87,6 +87,9 @@ def train_model(net, epoch, args):
     # lr = cf.learning_rate(args.lr, epoch)
     lr = args.lr
 
+    # metrics
+    metrics = {}
+
     optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
 
     print('\n=> Training Epoch #%d, LR=%.4f' % (epoch, lr))
@@ -104,7 +107,7 @@ def train_model(net, epoch, args):
         #print('esla3')
         loss3 = criterion3(outputs, targets)  # Loss
         #print("loss ce: {}, loss f2: {}, loss f3: {}".format(loss, loss2, loss3))
-        loss = loss2
+        loss = loss3
         loss.backward()  # Backward Propagation
         optimizer.step()  # Optimizer update
 
@@ -114,8 +117,8 @@ def train_model(net, epoch, args):
         correct += predicted.eq(targets.data).cpu().sum()
 
         # metrics
-        accuracy = 100. * correct / total
-        accuracy = accuracy.cpu().data.numpy()
+        #accuracy = 100. * correct / total
+        #accuracy = accuracy.cpu().data.numpy()
 
         sys.stdout.write('\r')
         sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tLoss: %.4f Acc@1: %.3f%%'
@@ -123,11 +126,13 @@ def train_model(net, epoch, args):
                             (len(train_set) // batch_size) + 1, loss.item(), 100. * correct / total))
         sys.stdout.flush()
 
-    print('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tLoss: %.4f Acc@1: %.3f%%'
-          % (epoch, num_epochs, batch_idx + 1,
-             (len(train_set) // batch_size) + 1, loss.item(), 100. * correct / total))
+    print('|\t\tLoss: %.4f Acc@1: %.3f%%' % (train_loss / batch_idx, 100. * correct / total))
+    # metrics
+    accuracy = 100. * correct / total
+    metrics['accuracy'] = accuracy.cpu().data.numpy()
+    metrics['train_loss'] = train_loss / batch_idx
 
-    return accuracy
+    return metrics
 
 
 def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
@@ -166,7 +171,7 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
                 loss2 = criterion2(outputs, targets)  # Loss
                 loss3 = criterion3(outputs, targets)  # Loss
                 #print("loss ce: {}, loss f2: {}, loss f3: {}".format(loss, loss2, loss3))
-                loss = loss2
+                loss = loss3
                 test_loss += loss.item()
 
             softmax_scores = F.softmax(outputs, dim=1)
@@ -221,13 +226,14 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
 
     # get the results
     metrics['accuracy'] = accuracy
+    metrics['test_loss'] = test_loss / batch_idx
     metrics['balanced_accuracy'] = balanced_accuracy
     metrics['auc'] = auc
     metrics['ece'] = ece
-
+    
     if is_validation_mode:
         print("\n| Validation Epoch #%d\t\t\tLoss: %.4f Acc@1: %.2f%% BalAcc@1: %.2f%% ECE: %.6f auc: %.2f%%" %
-              (epoch, loss.item(), accuracy, balanced_accuracy, ece, auc))
+              (epoch, test_loss / batch_idx, accuracy, balanced_accuracy, ece, auc))
     else:
         print("\n| \t\t\t Acc@1: %.2f%% BalAcc@1: %.2f%% ECE: %.6f auc: %.2f%%" %
               (accuracy, balanced_accuracy, ece, auc))
@@ -484,8 +490,8 @@ if __name__ == '__main__':
         net_name = os.path.basename(checkpoint_file)
         checkpoint = torch.load(checkpoint_file)
         net = checkpoint['model']
-        start_epoch = 13
-        best_accuracy = 83.88
+        start_epoch = 20
+        best_accuracy = 78.0
     else:
         print('| Building net type [' + args.net_type + ']...')
         net, file_name = get_network(args, num_classes)
@@ -497,8 +503,8 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
     criterion1 = FocalLoss1()
-    criterion2 = FocalLoss2(2)
-    criterion3 = FocalLoss3(2, 1)
+    criterion2 = FocalLoss2(3)
+    criterion3 = FocalLoss3(3, 1)
 
     print('\n[Phase 3] : Training model')
     print('| Training Epochs = ' + str(num_epochs))
@@ -510,17 +516,17 @@ if __name__ == '__main__':
     for epoch in range(start_epoch, start_epoch + num_epochs):
         start_time = time.time()
 
-        train_accuracy = train_model(net, epoch, args)
+        train_metrics = train_model(net, epoch, args)
         # validate_model(net, epoch)
-        df, logits, true_labels, pred_labels, metrics = test_model(net, val_loader, epoch, is_validation_mode=True)
+        df, logits, true_labels, pred_labels, val_metrics = test_model(net, val_loader, epoch, is_validation_mode=True)
 
         # write results
         filename = "checkpoint" + "/" + args.dataset + "/" + "training_log.csv"
         with open(filename, 'a+') as infile:
             csv_writer = csv.writer(infile, dialect='excel')
             if epoch == 1:
-                csv_writer.writerow(['epoch', 'train acc', 'val acc', 'val bal acc', 'val auc', 'val ece'])
-            csv_writer.writerow([epoch, train_accuracy] + list(metrics.values()))
+                csv_writer.writerow(['epoch', 'train_loss', 'train acc', 'val acc', 'val bal acc','val_loss', 'val auc', 'val ece'])
+            csv_writer.writerow([epoch] + list(train_metrics.values()) + list(val_metrics.values()))
 
         filename = 'checkpoint/' + args.dataset + '/' + args.net_type + '-' + str(epoch) + '-' + 'val'
         with open(filename + '.logits', 'wb') as f:
