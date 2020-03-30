@@ -266,10 +266,10 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
 
     # get the results
     metrics['accuracy'] = accuracy
+    metrics['balanced_accuracy'] = balanced_accuracy
     metrics['test_loss'] = test_loss / batch_idx
     metrics['test_loss_corrects'] = loss_correctly_preds.item()
     metrics['test_loss_incorrects'] = loss_incorrectly_preds.item()
-    metrics['balanced_accuracy'] = balanced_accuracy
     metrics['auc'] = auc
     metrics['ece'] = ece
     
