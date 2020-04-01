@@ -8,7 +8,7 @@ export dataset='isic2019'
 python main.py \
 	--datasets_class_folders_root_dir=/home/esla/datasets/my-experiments/isic2019_nv_vs_rest	\
         --dataset_class_type='class folders'	\
-	--lr=0.001	\
+	--lr=0.05	\
 	--net_type=resnet50	\
 	--dropout=0	\
 	--dataset=isic2019	\

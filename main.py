@@ -103,11 +103,10 @@ def train_model(net, epoch, args):
         #print('esla1')
         #loss1 = criterion1(outputs, targets)  # Loss
         #print('esla2')
-        loss2 = criterion2(outputs, targets)  # Loss
+        #loss2 = criterion2(outputs, targets)  # Loss
         #print('esla3')
-        loss3 = criterion3(outputs, targets)  # Loss
+        #loss3 = criterion3(outputs, targets)  # Loss
         #print("loss ce: {}, loss f2: {}, loss f3: {}".format(loss, loss2, loss3))
-        loss = loss3
         loss.backward()  # Backward Propagation
         optimizer.step()  # Optimizer update
 
@@ -168,10 +167,9 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             if is_validation_mode:
                 loss = criterion(outputs, targets)  # Loss
                 #loss1 = criterion1(outputs, targets)  # Loss
-                loss2 = criterion2(outputs, targets)  # Loss
-                loss3 = criterion3(outputs, targets)  # Loss
+                #loss2 = criterion2(outputs, targets)  # Loss
+                #loss3 = criterion3(outputs, targets)  # Loss
                 #print("loss ce: {}, loss f2: {}, loss f3: {}".format(loss, loss2, loss3))
-                loss = loss3
                 test_loss += loss.item()
 
             softmax_scores = F.softmax(outputs, dim=1)
@@ -251,7 +249,6 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
 
     # compute Adaptive ECE
     ece_results = get_adaptive_ece(true_labels, pred_labels, max_softmax_scores)
-    ece = ece_results['aece']
 
     # balanced accuracy score
     balanced_accuracy = balanced_accuracy_score(true_labels, pred_labels)
@@ -271,7 +268,9 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     metrics['test_loss_corrects'] = loss_correctly_preds.item()
     metrics['test_loss_incorrects'] = loss_incorrectly_preds.item()
     metrics['auc'] = auc
-    metrics['ece'] = ece
+    metrics['ece_total'] = ece_results['ece_total']
+    metrics['ece_pos_gap'] = ece_results['ece_pos_gap']
+    metrics['ece_neg_gap'] = ece_results['ece_neg_gap']
     
     #if is_validation_mode:
     #    print("\n| Validation Epoch #%d\t\t\tLoss: %.4f Acc@1: %.2f%% BalAcc@1: %.2f%% ECE: %.6f auc: %.2f%%" %
@@ -279,8 +278,9 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
 
     if is_validation_mode:
         print("\n| Validation Epoch #%d\t| Loss: %.4f | Corr Loss: %.4f | Incorr Loss: %.4f | Acc@1: %.2f%% | BalAcc@1: %.2f%% "
-            "ECE: %.6f auc: %.2f%%" %
-            (epoch, test_loss / batch_idx, loss_correctly_preds.item(), loss_incorrectly_preds.item(), accuracy, balanced_accuracy, ece, auc))
+            " | ECE_Total: %.6f | ECE_Pos: %.6f | ECE_Neg: %.6f | auc: %.2f%%" %
+            (epoch, test_loss / batch_idx, loss_correctly_preds.item(), loss_incorrectly_preds.item(), accuracy, balanced_accuracy, 
+             ece_results['ece_total'], ece_results['ece_pos_gap'], ece_results['ece_neg_gap'], auc))
     else:
         print("\n| \t\t\t Acc@1: %.2f%% | BalAcc@1: %.2f%% | ECE: %.6f | auc: %.2f%%" %
               (accuracy, balanced_accuracy, ece, auc))
@@ -548,10 +548,10 @@ if __name__ == '__main__':
         net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
         cudnn.benchmark = True
 
-    criterion = nn.CrossEntropyLoss()
-    criterion1 = FocalLoss1()
-    criterion2 = FocalLoss2(3)
-    criterion3 = FocalLoss3(3, 1)
+    #criterion = nn.CrossEntropyLoss()
+    #criterion1 = FocalLoss1()
+    #criterion2 = FocalLoss2(3)
+    criterion = FocalLoss3(3, 1)
 
     print('\n[Phase 3] : Training model')
     print('| Training Epochs = ' + str(num_epochs))
@@ -573,7 +573,7 @@ if __name__ == '__main__':
             csv_writer = csv.writer(infile, dialect='excel')
             if epoch == 1:
                 csv_writer.writerow(['epoch', 'train_loss', 'train_acc', 'val_acc', 'val_bal_acc', 
-                                    'val_loss', 'val_corr_loss', 'val_incorr_loss', 'val_auc', 'val_ece'])
+                                    'val_loss', 'val_corr_loss', 'val_incorr_loss', 'val_auc', 'val_ece_total', 'val_ece_pos', 'val_ece_neg'])
             csv_writer.writerow([epoch] + list(train_metrics.values()) + list(val_metrics.values()))
 
         filename = 'checkpoint/' + args.dataset + '/' + args.net_type + '-' + str(epoch) + '-' + 'val'

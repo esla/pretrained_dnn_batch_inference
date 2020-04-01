@@ -1,6 +1,8 @@
 from __future__ import division
 import matplotlib.pyplot as plt
 
+import numpy as np
+
 
 def AdaptiveBinning(infer_results, show_reliability_diagram=True):
     """
@@ -135,12 +137,22 @@ def AdaptiveBinning(infer_results, show_reliability_diagram=True):
                 neg_gap[ind] = confidence[ind] - accuracy[ind]
             ind += 1
 
+    # introduce partial ECEs for the positive and negative gaps
+    ece_metrics = {}
     # Get AECE and AMCE based on the binning.
     AMCE = 0
     AECE = 0
     for i in range(n_bins):
         AECE += abs((accuracy[i] - confidence[i])) * final_num[i] / n_total_sample
         AMCE = max(AMCE, abs((accuracy[i] - confidence[i])))
+        # To Do: This is improvision. Consider to tidy it up. This is possible because
+        # the gap and neg_gap lists were initialized with zeros
+        gap[i] = gap[i] * final_num[i] / n_total_sample
+        neg_gap[i] = neg_gap[i] * final_num[i] / n_total_sample
+ 
+    ece_metrics['ece_total'] = AECE
+    ece_metrics['ece_pos_gap'] = np.absolute(gap).sum()
+    ece_metrics['ece_neg_gap'] = np.absolute(neg_gap).sum()
 
     # Plot the Reliability Diagram if needed.
     if show_reliability_diagram:
@@ -155,4 +167,4 @@ def AdaptiveBinning(infer_results, show_reliability_diagram=True):
         plt.ylabel('Accuracy', fontsize=15)
         plt.show()
 
-    return AECE, AMCE, cof_min, cof_max, confidence, accuracy
+    return ece_metrics, AMCE, cof_min, cof_max, confidence, accuracy

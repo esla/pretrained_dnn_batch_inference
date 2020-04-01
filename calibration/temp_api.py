@@ -31,11 +31,13 @@ def get_adaptive_ece(true_labels, pred_labels, max_softmax_scores):
         correctness = true_labels[i] == pred_labels[i]
         labels_tuples.append([max_softmax_scores[i], correctness])
 
-    aece, amce, confidence, accuracy, min_confidence, max_confidence = AdaptiveBinning(labels_tuples,
+    ece_metrics, amce, confidence, accuracy, min_confidence, max_confidence = AdaptiveBinning(labels_tuples,
                                                                                        show_reliability_diagram=False)
 
     results = {}
-    results['aece'] = aece
+    results['ece_total'] = ece_metrics['ece_total']
+    results['ece_pos_gap'] = ece_metrics['ece_pos_gap']
+    results['ece_neg_gap'] = ece_metrics['ece_neg_gap']
     results['amce'] = amce
     results['confidence'] = confidence
     results['accuracy'] = accuracy
