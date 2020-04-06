@@ -38,6 +38,8 @@ from experimental_dl_codes.from_kaggle_post_focal_loss import FocalLoss as Focal
 from experimental_dl_codes.focal_loss_pytorch.focalloss import FocalLoss as FocalLoss2
 from experimental_dl_codes.RetinaNet.focal_loss import FocalLoss as FocalLoss3
 
+from torch_lr_finder import LRFinder
+
 
 
 # Return network and file name
@@ -90,7 +92,7 @@ def train_model(net, epoch, args):
     # metrics
     metrics = {}
 
-    optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
+    optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.8, weight_decay=5e-4)
 
     print('\n=> Training Epoch #%d, LR=%.4f' % (epoch, lr))
     for batch_idx, (inputs, targets) in enumerate(train_loader):
@@ -332,6 +334,7 @@ if __name__ == '__main__':
     common_group.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/cifar100]')
 
     training_group.add_argument('--resume_training', '-r', action='store_true', help='resume from checkpoint')
+    training_group.add_argument('--estimate_lr', '-lre',action='store_true', help='Use LR Finder to get rough estimate of start lr')
     training_group.add_argument('--resume_from_model', '-rm', help='Model to load to resume training from')
     training_group.add_argument('--lr', default=0.001, type=float, help='learning_rate')
     training_group.add_argument('--net_type', default='wide-resnet', type=str, help='model')
@@ -420,6 +423,7 @@ if __name__ == '__main__':
             if dataset_class_type == "class folders":
                 train_set = torchvision.datasets.ImageFolder(train_root, transform=augs.no_augmentation)
                 val_set = FolderDatasetWithImgPath(val_root, transform=augs.no_augmentation)
+                val_set_lr_est = torchvision.datasets.ImageFolder(val_root, transform=augs.no_augmentation)
                 print("class info: {}".format(train_set.class_to_idx))
             elif dataset_class_type == "csv files":
                 train_csv = csv_root_dir + "/" + "isic2019_train.csv"
@@ -438,6 +442,7 @@ if __name__ == '__main__':
             assert train_set and val_set is not None, "Please ensure that you have valid train and val dataset formats"
             train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
             val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=4)
+            val_loader_lr_est = torch.utils.data.DataLoader(val_set_lr_est, batch_size=batch_size, shuffle=False, num_workers=4)
 
         if is_inference:
             inference_root = args.inference_dataset_dir
@@ -548,10 +553,10 @@ if __name__ == '__main__':
         net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
         cudnn.benchmark = True
 
-    #criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss()
     #criterion1 = FocalLoss1()
     #criterion2 = FocalLoss2(3)
-    criterion = FocalLoss3(3, 1)
+    #criterion = FocalLoss3(3, 1)
 
     print('\n[Phase 3] : Training model')
     print('| Training Epochs = ' + str(num_epochs))
@@ -559,6 +564,28 @@ if __name__ == '__main__':
     print('| Optimizer = ' + str(optim_type))
 
     elapsed_time = 0
+    
+    if args.estimate_lr:
+        assert dataset_class_type == "class folders", 'This only works for class folder dataset type'
+        # previous weight_decay = 5e-4
+        # another one to try weight_decay=1e-2)
+        optimizer = optim.SGD(net.parameters(), lr=1e-7, momentum=0.9, weight_decay=5e-4)
+        lr_finder = LRFinder(net, optimizer, criterion, device="cuda")
+        #lr_finder.range_test(train_loader, end_lr=100, num_iter=100, step_mode="exp")
+        lr_finder.range_test(train_loader, val_loader=val_loader_lr_est, end_lr=1, num_iter=50, step_mode="exp")
+        lr_finder.plot()
+        #print(lr_finder.history)
+        filename = "checkpoint" + "/" + args.dataset + "/" + "lr_estimate_log.csv"
+        with open(filename, 'w') as outfile:
+            csv_writer = csv.writer(outfile, dialect='excel')
+            csv_writer.writerow(['lr', 'loss'])
+            lr, loss = lr_finder.history.values()
+            for i in range(len(loss)):
+                #print(loss[i], lr[i])
+                csv_writer.writerow([lr[i], loss[i]])
+
+        lr_finder.reset()
+        sys.exit()
 
     for epoch in range(start_epoch, start_epoch + num_epochs):
         start_time = time.time()
