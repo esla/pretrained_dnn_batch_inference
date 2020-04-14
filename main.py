@@ -35,8 +35,8 @@ from sklearn.metrics import roc_auc_score, balanced_accuracy_score
 
 # esla introducing experimental loss functions
 from experimental_dl_codes.from_kaggle_post_focal_loss import FocalLoss as FocalLoss1
-from experimental_dl_codes.focal_loss_pytorch.focalloss import FocalLoss as FocalLoss2
-from experimental_dl_codes.RetinaNet.focal_loss import FocalLoss as FocalLoss3
+from experimental_dl_codes.focal_loss2 import FocalLoss as FocalLoss2
+from experimental_dl_codes.focal_loss3 import FocalLoss as FocalLoss3
 
 from torch_lr_finder import LRFinder
 
@@ -564,9 +564,9 @@ if __name__ == '__main__':
         net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
         cudnn.benchmark = True
 
-    #criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss()
     #criterion1 = FocalLoss1()
-    criterion = FocalLoss2(7)
+    #criterion = FocalLoss2(7)
     #criterion = FocalLoss3(6, 1)
 
     print('\n[Phase 3] : Training model')
