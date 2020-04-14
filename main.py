@@ -73,6 +73,16 @@ def get_network(args, num_classes):
         aug['mean'] = [0.485, 0.456, 0.406]
         aug['std'] = [0.229, 0.224, 0.225]
         net.aug_params = aug
+    elif args.net_type == 'squeezenet1_1':
+        file_name = 'squeezenet1_1'
+        net = models.squeezenet1_1(pretrained=False)
+        #net.fc = nn.Linear(net.fc.in_features, num_classes)
+        net.num_classes = num_classes
+        aug['size'] = 224
+        aug['mean'] = [0.485, 0.456, 0.406]
+        aug['std'] = [0.229, 0.224, 0.225]
+        net.aug_params = aug
+	
     else:
         print('Error : Network should be either [LeNet / VGGNet / ResNet / Wide_ResNet')
         sys.exit(0)
@@ -92,7 +102,8 @@ def train_model(net, epoch, args):
     # metrics
     metrics = {}
 
-    optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.8, weight_decay=5e-4)
+    #optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.8, weight_decay=1e-2)
+    optimizer = optim.Adam(net.parameters(), lr=lr)
 
     print('\n=> Training Epoch #%d, LR=%.4f' % (epoch, lr))
     for batch_idx, (inputs, targets) in enumerate(train_loader):
@@ -240,7 +251,7 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     # esla debug (alternative way to get the predicted labels
     all_preds = list(all_preds.cpu().data.numpy())
     # ensure they are the same
-    assert all_preds != max_softmax_scores, 'These two must be the same'
+    #assert all_preds != max_softmax_scores, 'These two must be the same'
 
     df['ImageNames'] = all_img_paths
     df['TrueLabels'] = true_labels
@@ -411,7 +422,7 @@ if __name__ == '__main__':
             print("| Preparing CIFAR-100 dataset...")
             sys.stdout.write("| ")
             train_set = torchvision.datasets.CIFAR100(root='./data', train=True, download=True,
-                                                      transform=augs.no_augmentation)
+                                                      transform=augs.tf_transform)
             val_set = torchvision.datasets.CIFAR100(root='./data', train=False, download=False,
                                                     transform=augs.no_augmentation)
         num_classes = 100
@@ -421,7 +432,7 @@ if __name__ == '__main__':
             train_root = datasets_root_dir + "/train"
             val_root = datasets_root_dir + "/val"
             if dataset_class_type == "class folders":
-                train_set = torchvision.datasets.ImageFolder(train_root, transform=augs.no_augmentation)
+                train_set = torchvision.datasets.ImageFolder(train_root, transform=augs.tf_augment)
                 val_set = FolderDatasetWithImgPath(val_root, transform=augs.no_augmentation)
                 val_set_lr_est = torchvision.datasets.ImageFolder(val_root, transform=augs.no_augmentation)
                 print("class info: {}".format(train_set.class_to_idx))
@@ -441,7 +452,7 @@ if __name__ == '__main__':
 
             assert train_set and val_set is not None, "Please ensure that you have valid train and val dataset formats"
             train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
-            val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=4)
+            val_loader = torch.utils.data.DataLoader(val_set, batch_size=32, shuffle=False, num_workers=4)
             val_loader_lr_est = torch.utils.data.DataLoader(val_set_lr_est, batch_size=batch_size, shuffle=False, num_workers=4)
 
         if is_inference:
@@ -553,10 +564,10 @@ if __name__ == '__main__':
         net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
         cudnn.benchmark = True
 
-    criterion = nn.CrossEntropyLoss()
+    #criterion = nn.CrossEntropyLoss()
     #criterion1 = FocalLoss1()
-    #criterion2 = FocalLoss2(3)
-    #criterion = FocalLoss3(3, 1)
+    criterion = FocalLoss2(7)
+    #criterion = FocalLoss3(6, 1)
 
     print('\n[Phase 3] : Training model')
     print('| Training Epochs = ' + str(num_epochs))
@@ -569,7 +580,8 @@ if __name__ == '__main__':
         assert dataset_class_type == "class folders", 'This only works for class folder dataset type'
         # previous weight_decay = 5e-4
         # another one to try weight_decay=1e-2)
-        optimizer = optim.SGD(net.parameters(), lr=1e-7, momentum=0.9, weight_decay=5e-4)
+        #optimizer = optim.SGD(net.parameters(), lr=1e-7, momentum=0.8, weight_decay=1e-2)
+        optimizer = optim.Adam(net.parameters(), lr=1e-7)
         lr_finder = LRFinder(net, optimizer, criterion, device="cuda")
         #lr_finder.range_test(train_loader, end_lr=100, num_iter=100, step_mode="exp")
         lr_finder.range_test(train_loader, val_loader=val_loader_lr_est, end_lr=1, num_iter=50, step_mode="exp")
