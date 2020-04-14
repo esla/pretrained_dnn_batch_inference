@@ -47,6 +47,11 @@ def get_network(args, num_classes):
     if args.net_type == 'lenet':
         net = LeNet(num_classes)
         file_name = 'lenet'
+        aug['size'] = 32
+        aug['mean'] = [0.485, 0.456, 0.406]
+        aug['std'] = [0.229, 0.224, 0.225]
+        net.aug_params = aug
+
     elif args.net_type == 'vggnet':
         net = VGG(args.depth, num_classes)
         file_name = 'vgg-' + str(args.depth)
@@ -102,8 +107,8 @@ def train_model(net, epoch, args):
     # metrics
     metrics = {}
 
-    #optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.8, weight_decay=1e-2)
-    optimizer = optim.Adam(net.parameters(), lr=lr)
+    optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-2)
+    #optimizer = optim.Adam(net.parameters(), lr=lr)
 
     print('\n=> Training Epoch #%d, LR=%.4f' % (epoch, lr))
     for batch_idx, (inputs, targets) in enumerate(train_loader):
@@ -265,7 +270,7 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
 
     # balanced accuracy score
     balanced_accuracy = balanced_accuracy_score(true_labels, pred_labels)
-    true_labels_1_hot = to_categorical(true_labels, num_classes=2)
+    true_labels_1_hot = to_categorical(true_labels, num_classes)
     auc = roc_auc_score(true_labels_1_hot, softmax_values)
 
     # TBD: get this into a metrics data structure and return it if testing labeled datasets
@@ -365,7 +370,8 @@ if __name__ == '__main__':
     # esla extracted from code
     # input_image_size = 32
     # Ensure the datasets root directory is valid
-    assert os.path.isdir(args.datasets_class_folders_root_dir), 'Please provide a valid root directory for all datasets'
+    if args.dataset not in ['cifar10', 'cifar100']:
+        assert os.path.isdir(args.datasets_class_folders_root_dir), 'Please provide a valid root directory for all datasets'
 
     datasets_root_dir = args.datasets_class_folders_root_dir
     csv_root_dir = args.datasets_csv_root_dir
@@ -399,7 +405,7 @@ if __name__ == '__main__':
                color_brightness=0, color_hue=0, random_crop=False, random_erasing=False, piecewise_affine=False,
                tps=False, autoaugment=False)
 
-    aug['size'] = 224
+    aug['size'] = 32
     aug['mean'] = [0.485, 0.456, 0.406]
     aug['std'] = [0.229, 0.224, 0.225]
 
@@ -408,7 +414,7 @@ if __name__ == '__main__':
     # Data Uplaod
     print('\n[Phase 1] : Data Preparation')
 
-    if args.dataset == 'cifar10':
+    if args.dataset == 'cifar10_orig':
         if is_training:
             print("| Preparing CIFAR-10 dataset...")
             sys.stdout.write("| ")
@@ -417,7 +423,13 @@ if __name__ == '__main__':
             val_set = torchvision.datasets.CIFAR10(root='./data', train=False, download=False,
                                                    transform=augs.no_augmentation)
         num_classes = 10
-    elif args.dataset == 'cifar100':
+        aug['size'] = 32
+        assert train_set and val_set is not None, "Please ensure that you have valid train and val dataset formats"
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
+        val_loader = torch.utils.data.DataLoader(val_set, batch_size=32, shuffle=False, num_workers=4)
+        #val_loader_lr_est = torch.utils.data.DataLoader(val_set_lr_est, batch_size=batch_size, shuffle=False,
+        #                                                num_workers=4)
+    elif args.dataset == 'cifar100_orig':
         if is_training:
             print("| Preparing CIFAR-100 dataset...")
             sys.stdout.write("| ")
@@ -426,19 +438,25 @@ if __name__ == '__main__':
             val_set = torchvision.datasets.CIFAR100(root='./data', train=False, download=False,
                                                     transform=augs.no_augmentation)
         num_classes = 100
+        aug['size'] = 32
+        assert train_set and val_set is not None, "Please ensure that you have valid train and val dataset formats"
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
+        val_loader = torch.utils.data.DataLoader(val_set, batch_size=32, shuffle=False, num_workers=4)
+        #val_loader_lr_est = torch.utils.data.DataLoader(val_set_lr_est, batch_size=batch_size, shuffle=False,
+        #                                                num_workers=4)
 
-    elif args.dataset == "isic2019":
+    elif args.dataset_class_type == "class folders":
         if is_training:
             train_root = datasets_root_dir + "/train"
             val_root = datasets_root_dir + "/val"
             if dataset_class_type == "class folders":
-                train_set = torchvision.datasets.ImageFolder(train_root, transform=augs.tf_augment)
+                train_set = torchvision.datasets.ImageFolder(train_root, transform=augs.no_augmentation)
                 val_set = FolderDatasetWithImgPath(val_root, transform=augs.no_augmentation)
                 val_set_lr_est = torchvision.datasets.ImageFolder(val_root, transform=augs.no_augmentation)
                 print("class info: {}".format(train_set.class_to_idx))
             elif dataset_class_type == "csv files":
-                train_csv = csv_root_dir + "/" + "isic2019_train.csv"
-                val_csv = csv_root_dir + "/" + "isic2019_val.csv"
+                train_csv = csv_root_dir + "/" + args.dataset + "_train.csv"
+                val_csv = csv_root_dir + "/" + args.dataset + "_val.csv"
                 train_set = CSVDataset(root=train_root, csv_file=train_csv, image_field='image_path', target_field='NV',
                                        transform=augs.no_augmentation)
                 val_set = CSVDatasetWithName(root=val_root, csv_file=val_csv, image_field='image_path',
@@ -580,8 +598,8 @@ if __name__ == '__main__':
         assert dataset_class_type == "class folders", 'This only works for class folder dataset type'
         # previous weight_decay = 5e-4
         # another one to try weight_decay=1e-2)
-        #optimizer = optim.SGD(net.parameters(), lr=1e-7, momentum=0.8, weight_decay=1e-2)
-        optimizer = optim.Adam(net.parameters(), lr=1e-7)
+        optimizer = optim.SGD(net.parameters(), lr=1e-7, momentum=1, weight_decay=1e-2)
+        #optimizer = optim.Adam(net.parameters(), lr=1e-7)
         lr_finder = LRFinder(net, optimizer, criterion, device="cuda")
         #lr_finder.range_test(train_loader, end_lr=100, num_iter=100, step_mode="exp")
         lr_finder.range_test(train_loader, val_loader=val_loader_lr_est, end_lr=1, num_iter=50, step_mode="exp")
