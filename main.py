@@ -40,6 +40,9 @@ from experimental_dl_codes.focal_loss3 import FocalLoss as FocalLoss3
 
 from torch_lr_finder import LRFinder
 
+# Config
+import config as cf
+
 
 
 # Return network and file name
@@ -107,8 +110,8 @@ def train_model(net, epoch, args):
     # metrics
     metrics = {}
 
-    optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-2)
-    #optimizer = optim.Adam(net.parameters(), lr=lr)
+    #optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0.9, weight_decay=5e-4)
+    optimizer = optim.Adam(net.parameters(), lr=lr)
 
     print('\n=> Training Epoch #%d, LR=%.4f' % (epoch, lr))
     for batch_idx, (inputs, targets) in enumerate(train_loader):
@@ -142,6 +145,9 @@ def train_model(net, epoch, args):
                          % (epoch, num_epochs, batch_idx + 1,
                             (len(train_set) // batch_size) + 1, loss.item(), 100. * correct / total))
         sys.stdout.flush()
+
+    # print out current state of the learning rate
+    print("\n\n param_group: ", optimizer.param_groups[0]['lr'])
 
     print('|\t\tLoss: %.4f Acc@1: %.3f%%' % (train_loss / batch_idx, 100. * correct / total))
     # metrics
@@ -400,6 +406,9 @@ if __name__ == '__main__':
     best_accuracy = 0
     start_epoch, num_epochs, batch_size, optim_type = cf.start_epoch, cf.num_epochs, cf.batch_size, cf.optim_type
 
+    # Optimizers
+    #optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0.9, weight_decay=5e-4)    
+
     # Transformations
     aug = dict(hflip=False, vflip=False, rotation=0, shear=0, scale=1.0, color_contrast=0, color_saturation=0,
                color_brightness=0, color_hue=0, random_crop=False, random_erasing=False, piecewise_affine=False,
@@ -410,6 +419,21 @@ if __name__ == '__main__':
     aug['std'] = [0.229, 0.224, 0.225]
 
     augs = Augmentations(**aug)
+    
+    # Temporary transformations
+    # Data Uplaod
+    print('\n[Phase 1] : Data Preparation')
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(cf.mean[args.dataset], cf.std[args.dataset]),
+    ]) # meanstd transformation
+
+    transform_test = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(cf.mean[args.dataset], cf.std[args.dataset]),
+    ])
 
     # Data Uplaod
     print('\n[Phase 1] : Data Preparation')
@@ -450,9 +474,9 @@ if __name__ == '__main__':
             train_root = datasets_root_dir + "/train"
             val_root = datasets_root_dir + "/val"
             if dataset_class_type == "class folders":
-                train_set = torchvision.datasets.ImageFolder(train_root, transform=augs.no_augmentation)
-                val_set = FolderDatasetWithImgPath(val_root, transform=augs.no_augmentation)
-                val_set_lr_est = torchvision.datasets.ImageFolder(val_root, transform=augs.no_augmentation)
+                train_set = torchvision.datasets.ImageFolder(train_root, transform=transform_train)
+                val_set = FolderDatasetWithImgPath(val_root, transform=transform_test)
+                val_set_lr_est = torchvision.datasets.ImageFolder(val_root, transform=transform_test)
                 print("class info: {}".format(train_set.class_to_idx))
             elif dataset_class_type == "csv files":
                 train_csv = csv_root_dir + "/" + args.dataset + "_train.csv"
@@ -571,8 +595,8 @@ if __name__ == '__main__':
         net_name = os.path.basename(checkpoint_file)
         checkpoint = torch.load(checkpoint_file)
         net = checkpoint['model']
-        start_epoch = 20
-        best_accuracy = 78.0
+        start_epoch = 535
+        best_accuracy = 63.0
     else:
         print('| Building net type [' + args.net_type + ']...')
         net, file_name = get_network(args, num_classes)
@@ -582,10 +606,12 @@ if __name__ == '__main__':
         net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
         cudnn.benchmark = True
 
+    # Loss functions
     criterion = nn.CrossEntropyLoss()
     #criterion1 = FocalLoss1()
-    #criterion = FocalLoss2(7)
+    #criterion = FocalLoss2(2)
     #criterion = FocalLoss3(6, 1)
+
 
     print('\n[Phase 3] : Training model')
     print('| Training Epochs = ' + str(num_epochs))
@@ -598,8 +624,8 @@ if __name__ == '__main__':
         assert dataset_class_type == "class folders", 'This only works for class folder dataset type'
         # previous weight_decay = 5e-4
         # another one to try weight_decay=1e-2)
-        optimizer = optim.SGD(net.parameters(), lr=1e-7, momentum=1, weight_decay=1e-2)
-        #optimizer = optim.Adam(net.parameters(), lr=1e-7)
+        #optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0.9, weight_decay=5e-4)
+        optimizer = optim.Adam(net.parameters(), lr=1e-7)
         lr_finder = LRFinder(net, optimizer, criterion, device="cuda")
         #lr_finder.range_test(train_loader, end_lr=100, num_iter=100, step_mode="exp")
         lr_finder.range_test(train_loader, val_loader=val_loader_lr_est, end_lr=1, num_iter=50, step_mode="exp")
