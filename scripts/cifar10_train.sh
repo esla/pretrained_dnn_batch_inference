@@ -8,7 +8,7 @@ export dataset='isic2019'
 python main.py \
 	--datasets_class_folders_root_dir=/home/esla/research/datasets/cifar10-pngs-in-folders/cifar10  	\
         --dataset_class_type='class folders'	\
-	--lr=0.001	\
+	--lr=0.1	\
 	--net_type=lenet	\
 	--dropout=0	\
 	--dataset=cifar10	\

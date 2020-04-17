@@ -110,8 +110,8 @@ def train_model(net, epoch, args):
     # metrics
     metrics = {}
 
-    #optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0.9, weight_decay=5e-4)
-    optimizer = optim.Adam(net.parameters(), lr=lr)
+    optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0, weight_decay=5e-4)
+    #optimizer = optim.Adam(net.parameters(), lr=cf.learning_rate(lr, epoch))
 
     print('\n=> Training Epoch #%d, LR=%.4f' % (epoch, lr))
     for batch_idx, (inputs, targets) in enumerate(train_loader):
@@ -650,12 +650,15 @@ if __name__ == '__main__':
         # validate_model(net, epoch)
         df, logits, true_labels, pred_labels, val_metrics = test_model(net, val_loader, epoch, is_validation_mode=True)
 
+        # idea: update the gamma in a focal loss (Experimental)
+        criterion = FocalLoss2(10*val_metrics['ece_pos_gap'])
+
         # write results
         filename = "checkpoint" + "/" + args.dataset + "/" + "training_log.csv"
         with open(filename, 'a+') as infile:
             csv_writer = csv.writer(infile, dialect='excel')
             if epoch == 1:
-                csv_writer.writerow(['epoch', 'train_loss', 'train_acc', 'val_acc', 'val_bal_acc', 
+                csv_writer.writerow(['epoch', 'train_acc', 'train_loss', 'val_acc', 'val_bal_acc', 
                                     'val_loss', 'val_corr_loss', 'val_incorr_loss', 'val_auc', 'val_ece_total', 'val_ece_pos', 'val_ece_neg'])
             csv_writer.writerow([epoch] + list(train_metrics.values()) + list(val_metrics.values()))
 
