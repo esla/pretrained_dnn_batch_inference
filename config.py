@@ -35,6 +35,30 @@ def learning_rate_mtd1(initial_lr, epoch):
     return initial_lr * math.pow(0.2, optim_factor)
 
 
+def learning_rate(initial_lr, epoch):
+    if epoch < 20:
+        initial_lr = initial_lr
+    if epoch >= 20:
+        initial_lr = 0.4
+    if epoch >40:
+        initial_lr = 0.1
+    if epoch > 60:
+        initial_lr = 0.04
+    if epoch > 80:
+        initial_lr = 0.01
+    if epoch > 100:
+        initial_lr = 0.008
+    if epoch > 120:
+        initial_lr = 0.004
+    if epoch > 140:
+        initial_lr = 0.001
+    if epoch > 160:
+        initial_lr = 0.0004
+
+    if epoch > 180:
+        initial_lr = 0.0001
+    return initial_lr
+
 
 def get_hms(seconds):
     m, s = divmod(seconds, 60)
