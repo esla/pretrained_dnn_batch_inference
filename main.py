@@ -379,7 +379,7 @@ if __name__ == '__main__':
     # esla extracted from code
     # input_image_size = 32
     # Ensure the datasets root directory is valid
-    if args.dataset not in ['cifar10', 'cifar100']:
+    if args.dataset not in ['cifar10', 'cifar100', 'ba4_project']:
         assert os.path.isdir(args.datasets_class_folders_root_dir), 'Please provide a valid root directory for all datasets'
 
     datasets_root_dir = args.datasets_class_folders_root_dir
@@ -621,7 +621,7 @@ if __name__ == '__main__':
         df, logits, true_labels, pred_labels, val_metrics = test_model(net, val_loader, epoch, is_validation_mode=True)
 
         # idea: update the gamma in a focal loss (Experimental)
-        criterion = FocalLoss2(10*val_metrics['ece_pos_gap'])
+        #criterion = FocalLoss2(10*val_metrics['ece_pos_gap'])
 
         # write results
         filename = "checkpoint" + "/" + args.dataset + "/" + "training_log.csv"
