@@ -157,16 +157,6 @@ def train_model(net, epoch, args):
         inputs, targets = Variable(inputs), Variable(targets)
         outputs = net(inputs)  # Forward Propagation
         loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
-        #loss = criterion(outputs, get_target_in_appropriate_format(targets, num_classes))
-        # loss = criterion(outputs, targets)  # For multi-class loss
-        # loss = criterion(outputs, get_one_hot_embedding(targets, num_classes))  # Loss for multi-label loss
-        #print('esla1')
-        #loss1 = criterion1(outputs, targets)  # Loss
-        #print('esla2')
-        #loss2 = criterion2(outputs, targets)  # Loss
-        #print('esla3')
-        #loss3 = criterion3(outputs, targets)  # Loss
-        #print("loss ce: {}, loss f2: {}, loss f3: {}".format(loss, loss2, loss3))
         loss.backward()  # Backward Propagation
         optimizer.step()  # Optimizer update
 
@@ -228,12 +218,7 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             outputs = net(inputs)
 
             if is_validation_mode:
-                loss = criterion(outputs, targets)  # for multi-class loss
                 loss = criterion(outputs, get_one_hot_embedding(targets, num_classes))  # Loss for multi-label loss
-                #loss1 = criterion1(outputs, targets)  # Loss
-                #loss2 = criterion2(outputs, targets)  # Loss
-                #loss3 = criterion3(outputs, targets)  # Loss
-                #print("loss ce: {}, loss f2: {}, loss f3: {}".format(loss, loss2, loss3))
                 test_loss += loss.item()
 
             softmax_scores = F.softmax(outputs, dim=1)
@@ -260,9 +245,6 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
 
     targets = all_targets.type('torch.FloatTensor').view(len(all_targets), 1).cuda()
     preds = all_preds.type('torch.FloatTensor').view(len(all_preds), 1).cuda()
-    #print(all_logits[:10])
-    #print(targets[:10])
-    #print(preds[:10])
 
     temp_result = torch.cat([all_logits, targets, preds], 1)
 
@@ -275,40 +257,12 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     correct_outputs = correct_cat[:, :-1]
     targets_for_correct = correct_cat[:, -1].view(1, len(correct_outputs))[0].type('torch.LongTensor')
 
-    # print(correct_outputs.device)
-    # print(targets_for_correct.device)
-    # print(incorrect_outputs.device)
-    # print(targets_for_incorrect.device)
-
-    # # for multi-class tasks
-    # loss_correctly_preds = criterion(correct_outputs, targets_for_correct.cuda())
-    # loss_incorrectly_preds = criterion(incorrect_outputs, targets_for_incorrect.cuda())
-    #
-    # # for multi-label tasks
-    # loss_correctly_preds = criterion(correct_outputs, get_one_hot_embedding(targets_for_correct.cuda(), num_classes))
-    # # # print("\n\n\n")
-    # loss_incorrectly_preds = criterion(incorrect_outputs,
-    #                                    get_one_hot_embedding(targets_for_incorrect.cuda(), num_classes))
     loss_correctly_preds = criterion(correct_outputs, get_target_in_appropriate_format(args,targets_for_correct.cuda(),
                                                                                        num_classes))
     loss_incorrectly_preds = criterion(incorrect_outputs, get_target_in_appropriate_format(args,
                                                                                            targets_for_incorrect.cuda(),
                                                                                            num_classes))
 
-
-    #print("\n Number in correctly and incorrectly predicted ")
-    #print(incorrect_outputs[:10])
-    #print(correct_outputs[:10])
-    #print(len(correct_outputs))
-    #print(len(incorrect_outputs))
-    #print(targets_for_incorrect)
-    #print(targets_for_correct)
-
-    # print("\n Partial Losses")
-    # print("Correctly Predicted: ", loss_correctly_preds.item())
-    # print("Incorrectly Predicted: ", loss_incorrectly_preds.item())
-    # print("requires grad: ", loss_correctly_preds.requires_grad)
-    # print("requires grad: ", loss_incorrectly_preds.requires_grad)
 
     max_softmax_scores = list(np.max(softmax_values, axis=1))
     # esla debug (alternative way to get the predicted labels
@@ -347,10 +301,6 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     metrics['ece_total'] = ece_results['ece_total']
     metrics['ece_pos_gap'] = ece_results['ece_pos_gap']
     metrics['ece_neg_gap'] = ece_results['ece_neg_gap']
-    
-    #if is_validation_mode:
-    #    print("\n| Validation Epoch #%d\t\t\tLoss: %.4f Acc@1: %.2f%% BalAcc@1: %.2f%% ECE: %.6f auc: %.2f%%" %
-    #          (epoch, test_loss / batch_idx, accuracy, balanced_accuracy, ece, auc))
 
     if is_validation_mode:
         print("\n| Validation Epoch #%d\t| Loss: %.4f | Corr Loss: %.4f | Incorr Loss: %.4f | Acc@1: %.2f%% | BalAcc@1: %.2f%% "
@@ -360,7 +310,6 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     else:
         print("\n| \t\t\t Acc@1: %.2f%% | BalAcc@1: %.2f%% | ECE: %.6f | auc: %.2f%%" %
               (accuracy, balanced_accuracy, ece_results['ece_total'], auc))
-
 
     if is_validation_mode:
         if accuracy > best_accuracy:
@@ -610,42 +559,12 @@ if __name__ == '__main__':
 
         sys.exit(0)
 
-    # Test only option
-    # if args.test_only:
-    #     print('\n[Test Phase] : Model setup')
-    #     assert os.path.isdir('checkpoint'), 'Error: No checkpoint directory found!'
-    #     _, file_name = get_network(args, num_classes)
-    #     checkpoint = torch.load('./checkpoint/' + args.dataset + os.sep + file_name + '.t7')
-    #     net = checkpoint['model']
-    #
-    #     if use_cuda:
-    #         net.cuda()
-    #         net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
-    #         cudnn.benchmark = True
-    #
-    #     print('\n=> Test in Progress')
-    #     all_results_df, logits, true_labels, pred_labels = test_model(net, test_loader)
-    #
-    #     dataset_category = 'test'
-    #     prefix_result_file = args.dataset + '_' + dataset_category + '_' + file_name
-    #     with open(prefix_result_file + '.logits', 'wb') as f:
-    #         pickle.dump((true_labels, pred_labels, logits), f)
-    #
-    #     all_results_df.to_csv(prefix_result_file + '.csv')
-    #
-    #     sys.exit(0)
 
     # Model
     print('\n[Phase 2] : Model setup')
     if args.resume_training:
         # Load checkpoint
         print('| Resuming from checkpoint...')
-        # assert os.path.isdir('checkpoint'), 'Error: No checkpoint directory found!'
-        # _, file_name = get_network(args, num_classes)
-        # checkpoint = torch.load('./checkpoint/' + args.dataset + os.sep + file_name + '.t7')
-        # net = checkpoint['model']
-        # best_acc = checkpoint['acc']
-        # start_epoch = checkpoint['epoch']
         _, file_name = get_network(args, num_classes)
         checkpoint_file = args.resume_from_model
         assert os.path.exists(checkpoint_file) and os.path.isfile(
@@ -664,11 +583,8 @@ if __name__ == '__main__':
         net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
         cudnn.benchmark = True
 
+    # get the appropriate loss criterion for training
     criterion = get_loss_criterion(args)
-
-    #criterion1 = FocalLoss1()
-    #criterion = FocalLoss2(2)
-    #criterion = FocalLoss3(6, 1)
 
 
     print('\n[Phase 3] : Training model')

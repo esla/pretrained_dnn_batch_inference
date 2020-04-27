@@ -23,7 +23,7 @@ std = {
 classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
 
-def learning_rate(initial_lr, epoch):
+def learning_rate_mtd1(initial_lr, epoch):
     optim_factor = 0
     if (epoch > 160):
         optim_factor = 3
@@ -33,6 +33,7 @@ def learning_rate(initial_lr, epoch):
         optim_factor = 1
 
     return initial_lr * math.pow(0.2, optim_factor)
+
 
 
 def get_hms(seconds):
