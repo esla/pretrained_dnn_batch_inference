@@ -307,7 +307,8 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
              ece_results['ece_total'], ece_results['ece_pos_gap'], ece_results['ece_neg_gap'], auc))
     else:
         print("\n| \t\t\t Acc@1: %.2f%% | BalAcc@1: %.2f%% | ECE: %.6f | auc: %.2f%%" %
-              (accuracy, balanced_accuracy, ece, auc))
+              (accuracy, balanced_accuracy, ece_results['ece_total'], auc))
+
 
     if is_validation_mode:
         if accuracy > best_accuracy:
