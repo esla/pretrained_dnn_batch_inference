@@ -44,6 +44,42 @@ from torch_lr_finder import LRFinder
 import config as cf
 
 
+def get_one_hot_embedding(labels, num_classes):
+    """Embedding labels to one-hot form.
+
+    Args:
+      labels: (LongTensor) class labels, sized [N,].
+      num_classes: (int) number of classes.
+
+    Returns:
+      (tensor) encoded labels, sized [N, #classes].
+    """
+    y = torch.eye(num_classes)
+    return y[labels].cuda()
+
+
+def get_target_in_appropriate_format(args, targets, num_classes):
+    if args.learning_type == 'multi_class':
+        return targets
+    elif args.learning_type == 'multi_label':
+        return get_one_hot_embedding(targets, num_classes)
+    else:
+        sys.exit("Unknown learning task type")
+
+
+def get_loss_criterion(args):
+    global criterion
+    # Loss functions
+    if args.learning_type == 'multi_class':
+        criterion = nn.CrossEntropyLoss()
+    elif args.learning_type == 'multi_label':
+        criterion = nn.BCEWithLogitsLoss()
+    elif args.learning_type =='focal_loss':
+        criterion = FocalLoss2(3)
+    else:
+        sys.exit('Unknown loss function type')
+    return criterion
+
 
 # Return network and file name
 def get_network(args, num_classes):
@@ -120,7 +156,10 @@ def train_model(net, epoch, args):
         optimizer.zero_grad()
         inputs, targets = Variable(inputs), Variable(targets)
         outputs = net(inputs)  # Forward Propagation
-        loss = criterion(outputs, targets)  # Loss
+        loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
+        #loss = criterion(outputs, get_target_in_appropriate_format(targets, num_classes))
+        # loss = criterion(outputs, targets)  # For multi-class loss
+        # loss = criterion(outputs, get_one_hot_embedding(targets, num_classes))  # Loss for multi-label loss
         #print('esla1')
         #loss1 = criterion1(outputs, targets)  # Loss
         #print('esla2')
@@ -189,7 +228,8 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             outputs = net(inputs)
 
             if is_validation_mode:
-                loss = criterion(outputs, targets)  # Loss
+                loss = criterion(outputs, targets)  # for multi-class loss
+                loss = criterion(outputs, get_one_hot_embedding(targets, num_classes))  # Loss for multi-label loss
                 #loss1 = criterion1(outputs, targets)  # Loss
                 #loss2 = criterion2(outputs, targets)  # Loss
                 #loss3 = criterion3(outputs, targets)  # Loss
@@ -240,9 +280,21 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     # print(incorrect_outputs.device)
     # print(targets_for_incorrect.device)
 
-    loss_correctly_preds = criterion(correct_outputs, targets_for_correct.cuda())
-    #print("\n\n\n")
-    loss_incorrectly_preds = criterion(incorrect_outputs, targets_for_incorrect.cuda())
+    # # for multi-class tasks
+    # loss_correctly_preds = criterion(correct_outputs, targets_for_correct.cuda())
+    # loss_incorrectly_preds = criterion(incorrect_outputs, targets_for_incorrect.cuda())
+    #
+    # # for multi-label tasks
+    # loss_correctly_preds = criterion(correct_outputs, get_one_hot_embedding(targets_for_correct.cuda(), num_classes))
+    # # # print("\n\n\n")
+    # loss_incorrectly_preds = criterion(incorrect_outputs,
+    #                                    get_one_hot_embedding(targets_for_incorrect.cuda(), num_classes))
+    loss_correctly_preds = criterion(correct_outputs, get_target_in_appropriate_format(args,targets_for_correct.cuda(),
+                                                                                       num_classes))
+    loss_incorrectly_preds = criterion(incorrect_outputs, get_target_in_appropriate_format(args,
+                                                                                           targets_for_incorrect.cuda(),
+                                                                                           num_classes))
+
 
     #print("\n Number in correctly and incorrectly predicted ")
     #print(incorrect_outputs[:10])
@@ -346,15 +398,20 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='PyTorch Image Classification')
 
-    common_group = parser.add_argument_group("dataset params")
+    task_selection_group = parser.add_argument_group('learning task type')
+    dataset_params_group = parser.add_argument_group("dataset params")
     training_group = parser.add_argument_group("training params")
     inference_only_group = parser.add_argument_group("test-only params")
 
-    # common group arguments
-    common_group.add_argument('--dataset_class_type', '-dct', help='The class type for the dataset')
-    common_group.add_argument('--datasets_class_folders_root_dir', '-folders_dir', help='Root dir for all dataset')
-    common_group.add_argument('--datasets_csv_root_dir', '-csv_dir', help='Root dir for all dataset csv files')
-    common_group.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/cifar100]')
+    # task type arguments
+    task_selection_group.add_argument('--learning_type', default='multi-class', type=str, help=""" to select the kind of
+                                                                                               learning""")
+
+    # dataset parameters group arguments
+    dataset_params_group.add_argument('--dataset_class_type', '-dct', help='The class type for the dataset')
+    dataset_params_group.add_argument('--datasets_class_folders_root_dir', '-folders_dir', help='Root dir for all dataset')
+    dataset_params_group.add_argument('--datasets_csv_root_dir', '-csv_dir', help='Root dir for all dataset csv files')
+    dataset_params_group.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/cifar100]')
 
     training_group.add_argument('--resume_training', '-r', action='store_true', help='resume from checkpoint')
     training_group.add_argument('--estimate_lr', '-lre',action='store_true', help='Use LR Finder to get rough estimate of start lr')
@@ -607,8 +664,8 @@ if __name__ == '__main__':
         net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
         cudnn.benchmark = True
 
-    # Loss functions
-    criterion = nn.CrossEntropyLoss()
+    criterion = get_loss_criterion(args)
+
     #criterion1 = FocalLoss1()
     #criterion = FocalLoss2(2)
     #criterion = FocalLoss3(6, 1)
