@@ -150,7 +150,8 @@ def train_model(net, epoch, args):
     #optimizer = optim.Adam(net.parameters(), lr=cf.learning_rate(lr, epoch))
 
     print('\n=> Training Epoch #%d' % epoch)
-    for batch_idx, (inputs, targets) in enumerate(train_loader):
+    for batch_idx, data in enumerate(train_loader):
+        (inputs, targets), img_names = data
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()  # GPU settings
         optimizer.zero_grad()
@@ -439,6 +440,25 @@ if __name__ == '__main__':
         transforms.Normalize(cf.mean[args.dataset], cf.std[args.dataset]),
     ])
 
+    # Data augmentation and normalization for training
+    # Just normalization for validation
+    # esla TO DO: data transformation should contain no hardcoded values
+    data_transforms = {
+        'train': transforms.Compose([
+            transforms.Resize(augs.size),
+            transforms.RandomResizedCrop(augs.size),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(augs.mean, augs.std)
+        ]),
+        'val': transforms.Compose([
+            transforms.Resize(augs.size),
+            transforms.CenterCrop(augs.size),
+            transforms.ToTensor(),
+            transforms.Normalize(augs.mean, augs.std)
+        ]),
+    }
+
     # Data Uplaod
     print('\n[Phase 1] : Data Preparation')
 
@@ -478,9 +498,9 @@ if __name__ == '__main__':
             train_root = datasets_root_dir + "/train"
             val_root = datasets_root_dir + "/val"
             if dataset_class_type == "class folders":
-                train_set = torchvision.datasets.ImageFolder(train_root, transform=transform_train)
-                val_set = FolderDatasetWithImgPath(val_root, transform=transform_test)
-                val_set_lr_est = torchvision.datasets.ImageFolder(val_root, transform=transform_test)
+                train_set = FolderDatasetWithImgPath(train_root, transform=data_transforms['train'])
+                val_set = FolderDatasetWithImgPath(val_root, transform=data_transforms['val'])
+                val_set_lr_est = torchvision.datasets.ImageFolder(val_root, transform=augs.no_augmentation)
                 print("class info: {}".format(train_set.class_to_idx))
             elif dataset_class_type == "csv files":
                 train_csv = csv_root_dir + "/" + args.dataset + "_train.csv"
