@@ -149,7 +149,7 @@ def train_model(net, epoch, args):
     optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0, weight_decay=5e-4)
     #optimizer = optim.Adam(net.parameters(), lr=cf.learning_rate(lr, epoch))
 
-    print('\n=> Training Epoch #%d, LR=%.4f' % (epoch, lr))
+    print('\n=> Training Epoch #%d' % epoch)
     for batch_idx, (inputs, targets) in enumerate(train_loader):
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()  # GPU settings
@@ -164,10 +164,6 @@ def train_model(net, epoch, args):
         _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
         correct += predicted.eq(targets.data).cpu().sum()
-
-        # metrics
-        #accuracy = 100. * correct / total
-        #accuracy = accuracy.cpu().data.numpy()
 
         sys.stdout.write('\r')
         sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tLoss: %.4f Acc@1: %.3f%%'
