@@ -105,5 +105,5 @@ ENV/
 
 # Data
 data/
-/checkpoint/*
+checkpoint/*
 /results
