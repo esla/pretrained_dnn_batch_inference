@@ -214,7 +214,8 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             outputs = net(inputs)
 
             if is_validation_mode:
-                loss = criterion(outputs, get_one_hot_embedding(targets, num_classes))  # Loss for multi-label loss
+                #loss = criterion(outputs, get_one_hot_embedding(targets, num_classes))  # Loss for multi-label loss
+                loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
                 test_loss += loss.item()
 
             softmax_scores = F.softmax(outputs, dim=1)
