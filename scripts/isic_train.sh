@@ -6,6 +6,7 @@ export width=10
 export dataset='isic2019'
 
 python main.py \
+	--learning_type='multi_class'	\
 	--datasets_class_folders_root_dir=/home/esla/datasets/my-experiments/isic2019_nv_vs_rest	\
         --dataset_class_type='class folders'	\
 	--lr=0.001	\
