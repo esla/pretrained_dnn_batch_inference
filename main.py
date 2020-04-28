@@ -101,32 +101,49 @@ def get_network(args, num_classes):
         net = Wide_ResNet(args.depth, args.widen_factor, args.dropout, num_classes)
         file_name = 'wide-resnet-' + str(args.depth) + 'x' + str(args.widen_factor)
     elif args.net_type == 'resnet18':
-        file_name = 'resnet-18'
+        file_name = args.net_type
         net = models.resnet18(pretrained=False)
-        net.fc = nn.Linear(net.fc.in_features, num_classes)
+        num_features = net.fc.in_features
+        net.fc = nn.Linear(num_features, num_classes)
         aug['size'] = 224
         aug['mean'] = [0.485, 0.456, 0.406]
         aug['std'] = [0.229, 0.224, 0.225]
         net.aug_params = aug
 
     elif args.net_type == 'resnet50':
-        file_name = 'resnet-50'
+        file_name = args.net_type
         net = models.resnet50(pretrained=False)
-        net.fc = nn.Linear(net.fc.in_features, num_classes)
+        num_features = net.fc.in_features
+        net.fc = nn.Linear(num_features, num_classes)
+        aug['size'] = 224
+        aug['mean'] = [0.485, 0.456, 0.406]
+        aug['std'] = [0.229, 0.224, 0.225]
+        net.aug_params = aug
+    elif args.net_type == 'vgg11':
+        file_name = args.net_type
+        net = models.vgg11(pretrained=False)
+        num_features = net.classifier[6].in_features
+        net.classifier[6] = nn.Linear(num_features, num_classes)
         aug['size'] = 224
         aug['mean'] = [0.485, 0.456, 0.406]
         aug['std'] = [0.229, 0.224, 0.225]
         net.aug_params = aug
     elif args.net_type == 'squeezenet1_1':
-        file_name = 'squeezenet1_1'
+        file_name = args.net_type
         net = models.squeezenet1_1(pretrained=False)
-        #net.fc = nn.Linear(net.fc.in_features, num_classes)
+        net.classifier[1] = nn.Conv2d(512, num_classes, kernel_size=(1,1), stride=(1,1))
         net.num_classes = num_classes
         aug['size'] = 224
         aug['mean'] = [0.485, 0.456, 0.406]
         aug['std'] = [0.229, 0.224, 0.225]
-        net.aug_params = aug
-	
+    elif args.net_type == 'densenet121':
+        file_name = args.net_type
+        net = models.densenet121(pretrained=False)
+        num_features = net.classifier.in_features
+        net.classifier = nn.Linear(num_features, num_classes)
+        aug['size'] = 224
+        aug['mean'] = [0.485, 0.456, 0.406]
+        aug['std'] = [0.229, 0.224, 0.225]
     else:
         print('Error : Network should be either [LeNet / VGGNet / ResNet / Wide_ResNet')
         sys.exit(0)
@@ -185,7 +202,7 @@ def train_model(net, epoch, args):
 
 
 def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
-    global best_accuracy, logits, true_labels, pred_labels
+    global best_accuracy, best_acc_ace, logits, true_labels, pred_labels
     net.eval()
     net.training = False
     test_loss = 0
@@ -310,7 +327,7 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
               (accuracy, balanced_accuracy, ece_results['ece_total'], auc))
 
     if is_validation_mode:
-        if accuracy > best_accuracy:
+        if accuracy > best_accuracy  or accuracy  - metrics['test_loss_incorrects'] > best_acc_ace:  # stopping criteria idea 2
 
             print('| Saving Best model...\t\t\tTop1 = %.2f%%' % accuracy)
             state = {
@@ -336,7 +353,9 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             print("saving validation results: {}".format(val_csv_file))
             df.to_csv(val_csv_file)
 
-            best_accuracy = accuracy
+            best_accuracy = accuracy  # default stopping criteria idea
+            # best_accuracy = (accuracy/100) - metrics['ece_total']  # stopping criteria idea 1
+            best_acc_ace = accuracy - metrics['test_loss_incorrects']  # stopping criteria idea 2
 
     return df, logits, true_labels, pred_labels, metrics
 
