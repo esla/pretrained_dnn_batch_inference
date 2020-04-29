@@ -33,6 +33,8 @@ from keras.utils.np_utils import to_categorical
 from calibration.temp_api import get_adaptive_ece
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score
 
+import matplotlib.pyplot as plt
+
 # esla introducing experimental loss functions
 from experimental_dl_codes.from_kaggle_post_focal_loss import FocalLoss as FocalLoss1
 from experimental_dl_codes.focal_loss2 import FocalLoss as FocalLoss2
@@ -149,6 +151,33 @@ def get_network(args, num_classes):
         sys.exit(0)
 
     return net, file_name
+
+
+def show_dataloader_images(data_loader, augs, idx, is_save=False, save_dir="./sample_images"):
+    # Get a batch of training data
+    (inputs, targets), img_names = next(iter(data_loader))
+    #print(inputs.size())
+    #print(img_names)
+    # Make a grid from batch
+    out = torchvision.utils.make_grid(inputs)
+    full_img_name = os.path.join(save_dir, str(idx)+".png")
+    show_images(out, full_img_name, augs, is_save, title=[x for x in img_names])
+
+
+def show_images(inp, full_img_name, augs, is_save, title):
+    inp = inp.numpy().transpose((1, 2, 0))
+    # mean = np.array([0.485, 0.456, 0.406])
+    # std = np.array([0.229, 0.224, 0.225])
+    mean, std = augs.mean, augs.std
+    inp = std * inp + mean
+    inp = np.clip(inp, 0, 1)
+    plt.imshow(inp)
+    plt.title(title)
+    plt.pause(0.01)  # pause a bit so that plots are updated
+    if is_save:
+        plt.savefig(full_img_name)
+    else:
+        plt.show()
 
 
 def train_model(net, epoch, args):
@@ -438,7 +467,7 @@ if __name__ == '__main__':
                color_brightness=0, color_hue=0, random_crop=False, random_erasing=False, piecewise_affine=False,
                tps=False, autoaugment=False)
 
-    aug['size'] = 32
+    aug['size'] = 224
     aug['mean'] = [0.485, 0.456, 0.406]
     aug['std'] = [0.229, 0.224, 0.225]
 
@@ -595,6 +624,9 @@ if __name__ == '__main__':
 
         sys.exit(0)
 
+    # To quickly visualize the effect of transforms from the dataloader
+    #for i in range(10):
+    #    show_dataloader_images(train_loader, augs, i, is_save=False, save_dir="./sample_images")
 
     # Model
     print('\n[Phase 2] : Model setup')
