@@ -61,7 +61,7 @@ def get_one_hot_embedding(labels, num_classes):
 
 
 def get_target_in_appropriate_format(args, targets, num_classes):
-    if args.learning_type == 'multi_class':
+    if args.learning_type in ['multi_class', 'focal_loss']:
         return targets
     elif args.learning_type == 'multi_label':
         return get_one_hot_embedding(targets, num_classes)
@@ -69,7 +69,7 @@ def get_target_in_appropriate_format(args, targets, num_classes):
         sys.exit("Unknown learning task type")
 
 
-def get_loss_criterion(args):
+def get_loss_criterion(args, gamma=0, alpha=None):
     global criterion
     # Loss functions
     if args.learning_type == 'multi_class':
@@ -77,7 +77,7 @@ def get_loss_criterion(args):
     elif args.learning_type == 'multi_label':
         criterion = nn.BCEWithLogitsLoss()
     elif args.learning_type =='focal_loss':
-        criterion = FocalLoss2(3)
+        criterion = FocalLoss2(gamma=gamma, alpha=alpha)
     else:
         sys.exit('Unknown loss function type')
     return criterion
@@ -689,7 +689,10 @@ if __name__ == '__main__':
         df, logits, true_labels, pred_labels, val_metrics = test_model(net, val_loader, epoch, is_validation_mode=True)
 
         # idea: update the gamma in a focal loss (Experimental)
+        #gamma = 10*val_metrics['ece_pos_gap']   # loss idea 1
+        gamma = val_metrics['test_loss_incorrects']  # loss idea 2
         #criterion = FocalLoss2(10*val_metrics['ece_pos_gap'])
+        criterion = get_loss_criterion(args, gamma=gamma)
 
         # write results
         filename = "checkpoint" + "/" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_log.csv"
