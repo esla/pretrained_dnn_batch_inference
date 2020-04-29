@@ -88,10 +88,6 @@ def get_network(args, num_classes):
     if args.net_type == 'lenet':
         net = LeNet(num_classes)
         file_name = 'lenet'
-        aug['size'] = 32
-        aug['mean'] = [0.485, 0.456, 0.406]
-        aug['std'] = [0.229, 0.224, 0.225]
-        net.aug_params = aug
 
     elif args.net_type == 'vggnet':
         net = VGG(args.depth, num_classes)
@@ -107,45 +103,31 @@ def get_network(args, num_classes):
         net = models.resnet18(pretrained=False)
         num_features = net.fc.in_features
         net.fc = nn.Linear(num_features, num_classes)
-        aug['size'] = 224
-        aug['mean'] = [0.485, 0.456, 0.406]
-        aug['std'] = [0.229, 0.224, 0.225]
-        net.aug_params = aug
 
     elif args.net_type == 'resnet50':
         file_name = args.net_type
         net = models.resnet50(pretrained=False)
         num_features = net.fc.in_features
         net.fc = nn.Linear(num_features, num_classes)
-        aug['size'] = 224
-        aug['mean'] = [0.485, 0.456, 0.406]
-        aug['std'] = [0.229, 0.224, 0.225]
-        net.aug_params = aug
+
     elif args.net_type == 'vgg11':
         file_name = args.net_type
         net = models.vgg11(pretrained=False)
         num_features = net.classifier[6].in_features
         net.classifier[6] = nn.Linear(num_features, num_classes)
-        aug['size'] = 224
-        aug['mean'] = [0.485, 0.456, 0.406]
-        aug['std'] = [0.229, 0.224, 0.225]
-        net.aug_params = aug
+
     elif args.net_type == 'squeezenet1_1':
         file_name = args.net_type
         net = models.squeezenet1_1(pretrained=False)
         net.classifier[1] = nn.Conv2d(512, num_classes, kernel_size=(1,1), stride=(1,1))
         net.num_classes = num_classes
-        aug['size'] = 224
-        aug['mean'] = [0.485, 0.456, 0.406]
-        aug['std'] = [0.229, 0.224, 0.225]
+
     elif args.net_type == 'densenet121':
         file_name = args.net_type
         net = models.densenet121(pretrained=False)
         num_features = net.classifier.in_features
         net.classifier = nn.Linear(num_features, num_classes)
-        aug['size'] = 224
-        aug['mean'] = [0.485, 0.456, 0.406]
-        aug['std'] = [0.229, 0.224, 0.225]
+
     else:
         print('Error : Network should be either [LeNet / VGGNet / ResNet / Wide_ResNet')
         sys.exit(0)
@@ -403,6 +385,7 @@ if __name__ == '__main__':
                                                                                                learning""")
 
     # dataset parameters group arguments
+    dataset_params_group.add_argument('--input_image_size', type=int, help='input image size for the network')
     dataset_params_group.add_argument('--dataset_class_type', '-dct', help='The class type for the dataset')
     dataset_params_group.add_argument('--datasets_class_folders_root_dir', '-folders_dir', help='Root dir for all dataset')
     dataset_params_group.add_argument('--datasets_csv_root_dir', '-csv_dir', help='Root dir for all dataset csv files')
@@ -426,8 +409,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    # esla extracted from code
-    # input_image_size = 32
     # Ensure the datasets root directory is valid
     if args.dataset not in ['cifar10', 'cifar100', 'ba4_project']:
         assert os.path.isdir(args.datasets_class_folders_root_dir), 'Please provide a valid root directory for all datasets'
@@ -467,9 +448,8 @@ if __name__ == '__main__':
                color_brightness=0, color_hue=0, random_crop=False, random_erasing=False, piecewise_affine=False,
                tps=False, autoaugment=False)
 
-    aug['size'] = 224
-    aug['mean'] = [0.485, 0.456, 0.406]
-    aug['std'] = [0.229, 0.224, 0.225]
+    aug['size'] = args.input_image_size
+    aug['mean'], aug['std'] = cf.mean[args.dataset], cf.std[args.dataset]
 
     augs = Augmentations(**aug)
     
@@ -477,15 +457,15 @@ if __name__ == '__main__':
     # Data Uplaod
     print('\n[Phase 1] : Data Preparation')
     transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
+        transforms.RandomCrop(augs.size, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize(cf.mean[args.dataset], cf.std[args.dataset]),
+        transforms.Normalize(augs.mean, augs.std),
     ]) # meanstd transformation
 
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize(cf.mean[args.dataset], cf.std[args.dataset]),
+        transforms.Normalize(augs.mean, augs.std),
     ])
 
     # Data augmentation and normalization for training
@@ -522,7 +502,7 @@ if __name__ == '__main__':
         aug['size'] = 32
         assert train_set and val_set is not None, "Please ensure that you have valid train and val dataset formats"
         train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
-        val_loader = torch.utils.data.DataLoader(val_set, batch_size=32, shuffle=False, num_workers=4)
+        val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=4)
         #val_loader_lr_est = torch.utils.data.DataLoader(val_set_lr_est, batch_size=batch_size, shuffle=False,
         #                                                num_workers=4)
     elif args.dataset == 'cifar100_orig':
@@ -537,7 +517,7 @@ if __name__ == '__main__':
         aug['size'] = 32
         assert train_set and val_set is not None, "Please ensure that you have valid train and val dataset formats"
         train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
-        val_loader = torch.utils.data.DataLoader(val_set, batch_size=32, shuffle=False, num_workers=4)
+        val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=4)
         #val_loader_lr_est = torch.utils.data.DataLoader(val_set_lr_est, batch_size=batch_size, shuffle=False,
         #                                                num_workers=4)
 
@@ -566,7 +546,7 @@ if __name__ == '__main__':
 
             assert train_set and val_set is not None, "Please ensure that you have valid train and val dataset formats"
             train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
-            val_loader = torch.utils.data.DataLoader(val_set, batch_size=32, shuffle=False, num_workers=4)
+            val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=4)
             val_loader_lr_est = torch.utils.data.DataLoader(val_set_lr_est, batch_size=batch_size, shuffle=False, num_workers=4)
 
         if is_inference:
@@ -625,8 +605,8 @@ if __name__ == '__main__':
         sys.exit(0)
 
     # To quickly visualize the effect of transforms from the dataloader
-    #for i in range(10):
-    #    show_dataloader_images(train_loader, augs, i, is_save=False, save_dir="./sample_images")
+    for i in range(10):
+        show_dataloader_images(train_loader, augs, i, is_save=False, save_dir="./sample_images")
 
     # Model
     print('\n[Phase 2] : Model setup')
