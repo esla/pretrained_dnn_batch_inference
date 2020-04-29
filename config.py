@@ -3,7 +3,7 @@ import math
 
 start_epoch = 1
 num_epochs = 3000
-batch_size = 32
+batch_size = 8
 #batch_size = 32
 optim_type = 'SGD'
 
@@ -57,7 +57,6 @@ def learning_rate(initial_lr, epoch):
         initial_lr = 0.001
     if epoch > 160:
         initial_lr = 0.0004
-
     if epoch > 180:
         initial_lr = 0.0001
     return initial_lr

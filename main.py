@@ -117,6 +117,36 @@ def get_network_224(args, num_classes):
         num_features = net.fc.in_features
         net.fc = nn.Linear(num_features, num_classes)
 
+    elif args.net_type == 'resnet101':
+        file_name = args.net_type
+        net = models.resnet101(pretrained=False)
+        num_features = net.fc.in_features
+        net.fc = nn.Linear(num_features, num_classes)
+
+    elif args.net_type == 'wide_resnet50_2':
+        file_name = args.net_type
+        net = models.wide_resnet50_2(pretrained=False)
+        num_features = net.fc.in_features
+        net.fc = nn.Linear(num_features, num_classes)
+
+    elif args.net_type == 'wide_resnet101_2':
+        file_name = args.net_type
+        net = models.wide_resnet101_2(pretrained=False)
+        num_features = net.fc.in_features
+        net.fc = nn.Linear(num_features, num_classes)
+
+    elif args.net_type == 'resnext50_32x4d':
+        file_name = args.net_type
+        net = models.resnext50_32x4d(pretrained=False)
+        num_features = net.fc.in_features
+        net.fc = nn.Linear(num_features, num_classes)
+
+    elif args.net_type == 'resnext101_32x8d':
+        file_name = args.net_type
+        net = models.resnext101_32x8d(pretrained=False)
+        num_features = net.fc.in_features
+        net.fc = nn.Linear(num_features, num_classes)
+
     elif args.net_type == 'vgg11':
         file_name = args.net_type
         net = models.vgg11(pretrained=False)
