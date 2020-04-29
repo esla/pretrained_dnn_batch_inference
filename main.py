@@ -83,8 +83,7 @@ def get_loss_criterion(args):
     return criterion
 
 
-# Return network and file name
-def get_network(args, num_classes):
+def get_network_32(args, num_classes):
     if args.net_type == 'lenet':
         net = LeNet(num_classes)
         file_name = 'lenet'
@@ -98,7 +97,15 @@ def get_network(args, num_classes):
     elif args.net_type == 'wide-resnet':
         net = Wide_ResNet(args.depth, args.widen_factor, args.dropout, num_classes)
         file_name = 'wide-resnet-' + str(args.depth) + 'x' + str(args.widen_factor)
-    elif args.net_type == 'resnet18':
+    else:
+        print('Error : Wrong Network selected for this input size')
+        sys.exit(0)
+    return net, file_name
+
+
+# Return network and file name
+def get_network_224(args, num_classes):
+    if args.net_type == 'resnet18':
         file_name = args.net_type
         net = models.resnet18(pretrained=False)
         num_features = net.fc.in_features
@@ -129,10 +136,19 @@ def get_network(args, num_classes):
         net.classifier = nn.Linear(num_features, num_classes)
 
     else:
-        print('Error : Network should be either [LeNet / VGGNet / ResNet / Wide_ResNet')
+        print('Error : Wrong Network selected for this input image size')
         sys.exit(0)
 
     return net, file_name
+
+
+def get_network(args, num_classes):
+    if args.input_image_size == 32:
+        return get_network_32(args, num_classes)
+    elif args.input_image_size == 224:
+        return get_network_224(args, num_classes)
+    else:
+        sys.exit("!!!! Unknown args.input_image_size !!!!")
 
 
 def show_dataloader_images(data_loader, augs, idx, is_save=False, save_dir="./sample_images"):
@@ -605,8 +621,8 @@ if __name__ == '__main__':
         sys.exit(0)
 
     # To quickly visualize the effect of transforms from the dataloader
-    for i in range(10):
-        show_dataloader_images(train_loader, augs, i, is_save=False, save_dir="./sample_images")
+    #for i in range(10):
+    #    show_dataloader_images(train_loader, augs, i, is_save=False, save_dir="./sample_images")
 
     # Model
     print('\n[Phase 2] : Model setup')
