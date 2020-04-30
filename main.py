@@ -720,7 +720,8 @@ if __name__ == '__main__':
 
         # idea: update the gamma in a focal loss (Experimental)
         #gamma = 10*val_metrics['ece_pos_gap']   # loss idea 1
-        gamma = val_metrics['test_loss_incorrects']  # loss idea 2
+        #gamma = val_metrics['test_loss_incorrects']  # loss idea 2
+        gamma = val_metrics['test_loss_incorrects'] + val_metrics['ece_total'] # loss idea 3
         #criterion = FocalLoss2(10*val_metrics['ece_pos_gap'])
         criterion = get_loss_criterion(args, gamma=gamma)
 
