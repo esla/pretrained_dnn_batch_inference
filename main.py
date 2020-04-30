@@ -441,6 +441,7 @@ if __name__ == '__main__':
     training_group.add_argument('--estimate_lr', '-lre',action='store_true', help='Use LR Finder to get rough estimate of start lr')
     training_group.add_argument('--resume_from_model', '-rm', help='Model to load to resume training from')
     training_group.add_argument('--lr', default=0.001, type=float, help='learning_rate')
+    training_group.add_argument('--batch_size', default=32, type=int, help='training batch size')
     training_group.add_argument('--net_type', default='wide-resnet', type=str, help='model')
     training_group.add_argument('--depth', default=28, type=int, help='depth of model')
     training_group.add_argument('--widen_factor', default=10, type=int, help='width of model')
@@ -480,14 +481,19 @@ if __name__ == '__main__':
     val_loader = None
     inference_loader = None
 
+    # Update batch size if batch_size is provided as argument else use standard 32
+    batch_size = args.batch_size
+
     # Hyper Parameter settings
     use_cuda = torch.cuda.is_available()
     best_acc = 0
     best_accuracy = 0
-    start_epoch, num_epochs, batch_size, optim_type = cf.start_epoch, cf.num_epochs, cf.batch_size, cf.optim_type
+    #start_epoch, num_epochs, batch_size, optim_type = cf.start_epoch, cf.num_epochs, cf.batch_size, cf.optim_type
+    start_epoch, num_epochs, optim_type = cf.start_epoch, cf.num_epochs, cf.optim_type
 
     # Optimizers
-    #optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0.9, weight_decay=5e-4)    
+    # optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0.9, weight_decay=5e-4)
+
 
     # Transformations
     aug = dict(hflip=False, vflip=False, rotation=0, shear=0, scale=1.0, color_contrast=0, color_saturation=0,
