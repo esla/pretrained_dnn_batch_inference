@@ -24,6 +24,7 @@ from torch.autograd import Variable
 
 from torchvision import models
 
+
 from auglib.dataset_loader import FolderDatasetWithImgPath
 from auglib.augmentation import Augmentations
 from auglib.dataset_loader import CSVDataset, CSVDatasetWithName
@@ -32,6 +33,8 @@ from auglib.dataset_loader import CSVDataset, CSVDatasetWithName
 from keras.utils.np_utils import to_categorical
 from calibration.temp_api import get_adaptive_ece
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score
+
+import numpy as np
 
 import matplotlib.pyplot as plt
 
@@ -83,20 +86,32 @@ def get_loss_criterion(args, gamma=0, alpha=None):
     return criterion
 
 
-def get_network_32(args, num_classes):
+def get_network_32(args, num_classes):  # To Do: Currently works only for num_classes = 10
     if args.net_type == 'lenet':
         net = LeNet(num_classes)
         file_name = 'lenet'
 
-    elif args.net_type == 'vggnet':
-        net = VGG(args.depth, num_classes)
-        file_name = 'vgg-' + str(args.depth)
-    elif args.net_type == 'resnet':
-        net = ResNet(args.depth, num_classes)
-        file_name = 'resnet-' + str(args.depth)
-    elif args.net_type == 'wide-resnet':
-        net = Wide_ResNet(args.depth, args.widen_factor, args.dropout, num_classes)
-        file_name = 'wide-resnet-' + str(args.depth) + 'x' + str(args.widen_factor)
+    elif 'VGG' in args.net_type.upper():
+        net = VGG(args.net_type.upper())
+        file_name = args.net_type
+    elif args.net_type == 'resnet18':
+        net = ResNet18()
+        file_name = args.net_type
+    elif args.net_type == 'resnet34':
+        net = ResNet18()
+        file_name = args.net_type
+    elif args.net_type == 'resnet50':
+        net = ResNet18()
+        file_name = args.net_type
+    elif args.net_type == 'resnet101':
+        net = ResNet18()
+        file_name = args.net_type
+    elif args.net_type == 'resnet152':
+        net = ResNet18()
+        file_name = args.net_type
+    # elif args.net_type == 'wide-resnet':
+    #     net = Wide_ResNet(args.depth, args.widen_factor, args.dropout, num_classes)
+    #     file_name = 'wide-resnet-' + str(args.depth) + 'x' + str(args.widen_factor)
     else:
         print('Error : Wrong Network selected for this input size')
         sys.exit(0)
