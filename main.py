@@ -593,8 +593,10 @@ if __name__ == '__main__':
             train_root = datasets_root_dir + "/train"
             val_root = datasets_root_dir + "/val"
             if dataset_class_type == "class folders":
-                train_set = FolderDatasetWithImgPath(train_root, transform=data_transforms['train'])
-                val_set = FolderDatasetWithImgPath(val_root, transform=data_transforms['val'])
+                #train_set = FolderDatasetWithImgPath(train_root, transform=data_transforms['train'])
+                #val_set = FolderDatasetWithImgPath(val_root, transform=data_transforms['val'])
+                train_set = FolderDatasetWithImgPath(train_root, transform=transform_train)
+                val_set = FolderDatasetWithImgPath(val_root, transform=transform_test)
                 val_set_lr_est = torchvision.datasets.ImageFolder(val_root, transform=augs.no_augmentation)
                 print("class info: {}".format(train_set.class_to_idx))
             elif dataset_class_type == "csv files":

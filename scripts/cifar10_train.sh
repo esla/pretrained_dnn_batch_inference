@@ -9,6 +9,8 @@ python main.py \
 	--learning_type='multi_class'	\
 	--datasets_class_folders_root_dir=/home/esla/research/datasets/cifar10-pngs-in-folders/cifar10  	\
         --dataset_class_type='class folders'	\
+	--batch_size=128    \
+	--input_image_size=32	\
 	--lr=0.1	\
 	--net_type=lenet	\
 	--dropout=0	\
