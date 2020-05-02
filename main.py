@@ -88,7 +88,8 @@ def get_loss_criterion(args, gamma=0, alpha=None):
 
 def get_network_32(args, num_classes):  # To Do: Currently works only for num_classes = 10
     if args.net_type == 'lenet':
-        net = LeNet(num_classes)
+        #net = LeNet(num_classes)
+        net = LeNet()
         file_name = 'lenet'
 
     elif 'VGG' in args.net_type.upper():
@@ -108,6 +109,9 @@ def get_network_32(args, num_classes):  # To Do: Currently works only for num_cl
         file_name = args.net_type
     elif args.net_type == 'resnet152':
         net = ResNet18()
+        file_name = args.net_type
+    elif args.net_type == 'efficientnetB0':
+        net = EfficientNetB0()
         file_name = args.net_type
     # elif args.net_type == 'wide-resnet':
     #     net = Wide_ResNet(args.depth, args.widen_factor, args.dropout, num_classes)
@@ -410,7 +414,7 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             if not os.path.isdir('checkpoint'):
                 os.mkdir('checkpoint')
 
-            save_point = './checkpoint/' + args.dataset + "-" + str(args.input_image_size) + os.sep
+            save_point = './checkpoint/' + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + os.sep
 
             if not os.path.isdir(save_point):
                 os.mkdir(save_point)
@@ -520,7 +524,7 @@ if __name__ == '__main__':
 
     augs = Augmentations(**aug)
     
-    # Temporary transformations
+    # Temporary transformations (temp trans1)
     # Data Uplaod
     print('\n[Phase 1] : Data Preparation')
     transform_train = transforms.Compose([
@@ -535,7 +539,7 @@ if __name__ == '__main__':
         transforms.Normalize(augs.mean, augs.std),
     ])
 
-    # Data augmentation and normalization for training
+    # Data augmentation and normalization for training (temp trans2)
     # Just normalization for validation
     # esla TO DO: data transformation should contain no hardcoded values
     data_transforms = {
@@ -593,13 +597,15 @@ if __name__ == '__main__':
             train_root = datasets_root_dir + "/train"
             val_root = datasets_root_dir + "/val"
             if dataset_class_type == "class folders":
-                train_set = FolderDatasetWithImgPath(train_root, transform=data_transforms['train'])
-                val_set = FolderDatasetWithImgPath(val_root, transform=data_transforms['val'])
+                #train_set = FolderDatasetWithImgPath(train_root, transform=data_transforms['train'])
+                #val_set = FolderDatasetWithImgPath(val_root, transform=data_transforms['val'])
+                train_set = FolderDatasetWithImgPath(train_root, transform=transform_train)
+                val_set = FolderDatasetWithImgPath(val_root, transform=transform_test)
                 val_set_lr_est = torchvision.datasets.ImageFolder(val_root, transform=augs.no_augmentation)
                 print("class info: {}".format(train_set.class_to_idx))
             elif dataset_class_type == "csv files":
-                train_csv = csv_root_dir + "/" + args.dataset + "-" + str(args.input_image_size) + "_train.csv"
-                val_csv = csv_root_dir + "/" + args.dataset + "-" + str(args.input_image_size) + "_val.csv"
+                train_csv = csv_root_dir + "/" + args.dataset + "_train.csv"
+                val_csv = csv_root_dir + "/" + args.dataset + "_val.csv"
                 train_set = CSVDataset(root=train_root, csv_file=train_csv, image_field='image_path', target_field='NV',
                                        transform=augs.no_augmentation)
                 val_set = CSVDatasetWithName(root=val_root, csv_file=val_csv, image_field='image_path',
@@ -656,7 +662,7 @@ if __name__ == '__main__':
         all_results_df, logits, true_labels, pred_labels, metrics = test_model(net, inference_loader)
 
         # write results
-        filename = "checkpoint" +"/" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference.csv"
+        filename = "checkpoint" + "/" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference.csv"
         with open(filename, 'a+') as infile:
             csv_writer = csv.writer(infile, dialect='excel')
             csv_writer.writerow(list(metrics.values()))
@@ -720,7 +726,7 @@ if __name__ == '__main__':
         lr_finder.range_test(train_loader, val_loader=val_loader_lr_est, end_lr=1, num_iter=50, step_mode="exp")
         lr_finder.plot()
         #print(lr_finder.history)
-        filename = "checkpoint" + "/" + args.dataset + "-" + str(args.input_image_size) + "/" + "lr_estimate_log.csv"
+        filename = "checkpoint" + "/" +  args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "lr_estimate_log.csv"
         with open(filename, 'w') as outfile:
             csv_writer = csv.writer(outfile, dialect='excel')
             csv_writer.writerow(['lr', 'loss'])
@@ -747,7 +753,7 @@ if __name__ == '__main__':
         criterion = get_loss_criterion(args, gamma=gamma)
 
         # write results
-        filename = "checkpoint" + "/" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_log.csv"
+        filename = "checkpoint" + "/" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_log.csv"
         with open(filename, 'a+') as infile:
             csv_writer = csv.writer(infile, dialect='excel')
             if epoch == 1:
@@ -755,7 +761,7 @@ if __name__ == '__main__':
                                     'val_loss', 'val_corr_loss', 'val_incorr_loss', 'val_auc', 'val_ece_total', 'val_ece_pos', 'val_ece_neg'])
             csv_writer.writerow([epoch] + list(train_metrics.values()) + list(val_metrics.values()))
 
-        filename = 'checkpoint/' + args.dataset + "-" + str(args.input_image_size) + '/' + args.net_type + '-' + str(epoch) + '-' + 'val'
+        filename = 'checkpoint/' + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + '/' + args.net_type + '-' + str(epoch) + '-' + 'val'
 
         with open(filename + '.logits', 'wb') as f:
             pickle.dump((true_labels, pred_labels, logits), f)

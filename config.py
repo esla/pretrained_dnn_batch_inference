@@ -26,6 +26,7 @@ std = {
 classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
 
+# exp lr_schedule2
 def learning_rate_mtd1(initial_lr, epoch):
     optim_factor = 0
     if (epoch > 160):
@@ -38,6 +39,7 @@ def learning_rate_mtd1(initial_lr, epoch):
     return initial_lr * math.pow(0.2, optim_factor)
 
 
+# exp lr_schedule1
 def learning_rate_mine(initial_lr, epoch):
     if epoch < 20:
         initial_lr = initial_lr
@@ -62,6 +64,7 @@ def learning_rate_mine(initial_lr, epoch):
     return initial_lr
 
 
+# default lr_schedule
 def learning_rate(initial_lr, epoch):
     if epoch < 150:
         initial_lr = initial_lr
