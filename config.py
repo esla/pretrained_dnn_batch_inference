@@ -2,7 +2,7 @@
 import math
 
 start_epoch = 1
-num_epochs = 3000
+num_epochs = 400
 #batch_size = 256
 #batch_size = 32
 optim_type = 'SGD'
@@ -65,17 +65,16 @@ def learning_rate_mtd2(initial_lr, epoch):
 
 
 # default lr_schedule
+# default lr_schedule
 def learning_rate_mtd3(initial_lr, epoch):
     if epoch < 150:
-        initial_lr = initial_lr
-    elif epoch >= 150:
-        initial_lr = 0.01
-    elif epoch > 250:
-        initial_lr = 0.0001
-    elif epoch > 350:
-        initial_lr = 0.00001
-    return initial_lr
-
+        return initial_lr
+    elif epoch < 250:
+        return 0.01
+    elif epoch < 350:
+        return 0.0001
+    else:
+        return 0.00001
 
 def get_hms(seconds):
     m, s = divmod(seconds, 60)
