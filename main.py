@@ -38,6 +38,8 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 
+from datetime import datetime
+
 # esla introducing experimental loss functions
 from experimental_dl_codes.from_kaggle_post_focal_loss import FocalLoss as FocalLoss1
 from experimental_dl_codes.focal_loss2 import FocalLoss as FocalLoss2
@@ -415,7 +417,10 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             if not os.path.isdir('checkpoint'):
                 os.mkdir('checkpoint')
 
-            save_point = './checkpoint/' + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + os.sep
+            if not os.path.isdir('checkpoint/'+experiment_dir):
+                os.mkdir('checkpoint/'+experiment_dir)
+
+            save_point = './checkpoint/' + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + os.sep
 
             if not os.path.isdir(save_point):
                 os.mkdir(save_point)
@@ -515,6 +520,8 @@ if __name__ == '__main__':
     # Optimizers
     # optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0.9, weight_decay=5e-4)
 
+    # misc variables
+    experiment_dir = datetime.now().strftime("%d-%b-%Y-%H_%M_%S.%f")
 
     # Transformations
     aug = dict(hflip=False, vflip=False, rotation=0, shear=0, scale=1.0, color_contrast=0, color_saturation=0,
@@ -676,7 +683,7 @@ if __name__ == '__main__':
         all_results_df, logits, true_labels, pred_labels, metrics = test_model(net, inference_loader)
 
         # write results
-        filename = "checkpoint" + "/" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference.csv"
+        filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference.csv"
         with open(filename, 'a+') as infile:
             csv_writer = csv.writer(infile, dialect='excel')
             csv_writer.writerow(list(metrics.values()))
@@ -740,7 +747,7 @@ if __name__ == '__main__':
         lr_finder.range_test(train_loader, val_loader=val_loader_lr_est, end_lr=1, num_iter=50, step_mode="exp")
         lr_finder.plot()
         #print(lr_finder.history)
-        filename = "checkpoint" + "/" +  args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "lr_estimate_log.csv"
+        filename = "checkpoint" + "/" + experiment_dir + "-" +  args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "lr_estimate_log.csv"
         with open(filename, 'w') as outfile:
             csv_writer = csv.writer(outfile, dialect='excel')
             csv_writer.writerow(['lr', 'loss'])
@@ -767,7 +774,7 @@ if __name__ == '__main__':
         criterion = get_loss_criterion(args, gamma=gamma)
 
         # write results
-        filename = "checkpoint" + "/" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_log.csv"
+        filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_log.csv"
         with open(filename, 'a+') as infile:
             csv_writer = csv.writer(infile, dialect='excel')
             if epoch == 1:
@@ -775,7 +782,7 @@ if __name__ == '__main__':
                                     'val_loss', 'val_corr_loss', 'val_incorr_loss', 'val_auc', 'val_ece_total', 'val_ece_pos', 'val_ece_neg'])
             csv_writer.writerow([epoch] + list(train_metrics.values()) + list(val_metrics.values()))
 
-        filename = 'checkpoint/' + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + '/' + args.net_type + '-' + str(epoch) + '-' + 'val'
+        filename = 'checkpoint/' + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + '/' + args.net_type + '-' + str(epoch) + '-' + 'val'
 
         with open(filename + '.logits', 'wb') as f:
             pickle.dump((true_labels, pred_labels, logits), f)
