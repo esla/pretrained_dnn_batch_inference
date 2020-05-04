@@ -582,11 +582,11 @@ if __name__ == '__main__':
 
     # Select the appropriate data transformation
     if args.data_transform == 'data_transform1':
-        train_transform = data_transforms['train']
-        val_transform = data_transforms['val']
-    elif args.data_transform == 'data_transform2':
         train_transform = transform_train
         val_transform = transform_test
+    elif args.data_transform == 'data_transform2':
+        train_transform = data_transforms['train']
+        val_transform = data_transforms['val']
     else:
         sys.exit("Error! Please provide the appropriate transform")
 

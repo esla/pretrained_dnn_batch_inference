@@ -10,10 +10,10 @@ python main.py \
 	--input_image_size=32   \
 	--datasets_class_folders_root_dir=/home/esla/research/datasets/cifar10-pngs-in-folders/cifar10  	\
     	--dataset_class_type='class folders'	\
-    	--data_transform='data_transform2'	\
+    	--data_transform='data_transform1'	\
 	--batch_size=128    \
 	--lr=0.1	\
-	--lr_scheduler=mtd2     \
+	--lr_scheduler=mtd3     \
 	--batch_size=128    \
 	--net_type=resnet50	\
 	--dropout=0	\
