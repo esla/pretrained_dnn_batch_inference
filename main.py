@@ -41,6 +41,7 @@ import matplotlib.pyplot as plt
 # esla introducing experimental loss functions
 from experimental_dl_codes.from_kaggle_post_focal_loss import FocalLoss as FocalLoss1
 from experimental_dl_codes.focal_loss2 import FocalLoss as FocalLoss2
+from experimental_dl_codes.ohem import NllOhem
 from experimental_dl_codes.focal_loss3 import FocalLoss as FocalLoss3
 
 from torch_lr_finder import LRFinder
@@ -455,6 +456,7 @@ if __name__ == '__main__':
     dataset_params_group.add_argument('--datasets_class_folders_root_dir', '-folders_dir', help='Root dir for all dataset')
     dataset_params_group.add_argument('--datasets_csv_root_dir', '-csv_dir', help='Root dir for all dataset csv files')
     dataset_params_group.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/cifar100]')
+    dataset_params_group.add_argument('--data_transform', type=str, help='The dataset transform to be used')
 
     training_group.add_argument('--resume_training', '-r', action='store_true', help='resume from checkpoint')
     training_group.add_argument('--estimate_lr', '-lre',action='store_true', help='Use LR Finder to get rough estimate of start lr')
@@ -526,6 +528,7 @@ if __name__ == '__main__':
     
     # Temporary transformations (temp trans1)
     # Data Uplaod
+    # data_transform1
     print('\n[Phase 1] : Data Preparation')
     transform_train = transforms.Compose([
         transforms.RandomCrop(augs.size, padding=4),
@@ -542,6 +545,7 @@ if __name__ == '__main__':
     # Data augmentation and normalization for training (temp trans2)
     # Just normalization for validation
     # esla TO DO: data transformation should contain no hardcoded values
+    # data_transform2
     data_transforms = {
         'train': transforms.Compose([
             transforms.Resize(augs.size),
@@ -557,6 +561,16 @@ if __name__ == '__main__':
             transforms.Normalize(augs.mean, augs.std)
         ]),
     }
+
+    # Select the appropriate data transformation
+    if args.data_transform == 'data_transform1':
+        train_transform = data_transforms['train']
+        val_transform = data_transforms['val']
+    elif args.data_transform == 'data_transform2':
+        train_transform = transform_train
+        val_transform = transform_test
+    else:
+        sys.exit("Error! Please provide the appropriate transform")
 
     # Data Uplaod
     print('\n[Phase 1] : Data Preparation')
@@ -599,18 +613,18 @@ if __name__ == '__main__':
             if dataset_class_type == "class folders":
                 #train_set = FolderDatasetWithImgPath(train_root, transform=data_transforms['train'])
                 #val_set = FolderDatasetWithImgPath(val_root, transform=data_transforms['val'])
-                train_set = FolderDatasetWithImgPath(train_root, transform=transform_train)
-                val_set = FolderDatasetWithImgPath(val_root, transform=transform_test)
-                val_set_lr_est = torchvision.datasets.ImageFolder(val_root, transform=augs.no_augmentation)
+                train_set = FolderDatasetWithImgPath(train_root, transform=train_transform)
+                val_set = FolderDatasetWithImgPath(val_root, transform=val_transform)
+                val_set_lr_est = torchvision.datasets.ImageFolder(val_root, transform=val_transform)
                 print("class info: {}".format(train_set.class_to_idx))
             elif dataset_class_type == "csv files":
                 train_csv = csv_root_dir + "/" + args.dataset + "_train.csv"
                 val_csv = csv_root_dir + "/" + args.dataset + "_val.csv"
                 train_set = CSVDataset(root=train_root, csv_file=train_csv, image_field='image_path', target_field='NV',
-                                       transform=augs.no_augmentation)
+                                       transform=augs.train_transform)
                 val_set = CSVDatasetWithName(root=val_root, csv_file=val_csv, image_field='image_path',
                                              target_field='NV',
-                                             transform=augs.no_augmentation)
+                                             transform=val_transform)
             else:
                 sys.exit("Should never be reached!!! Check dtaset_class_type argument")
             # Ensure all datasets for training have equal number of classes
@@ -625,11 +639,11 @@ if __name__ == '__main__':
         if is_inference:
             inference_root = args.inference_dataset_dir
             if dataset_class_type == "class folders":
-                inference_set = FolderDatasetWithImgPath(inference_root, transform=augs.no_augmentation)
+                inference_set = FolderDatasetWithImgPath(inference_root, transform=val_transform)
             elif dataset_class_type == "csv files":
                 inference_csv = inference_root + "/" + "isic2019_val.csv"
                 inference_set = CSVDatasetWithName(root=inference_root, csv_file=inference_csv, image_field='image_path',
-                                                   target_field='NV', transform=augs.no_augmentation)
+                                                   target_field='NV', transform=val_transform)
             else:
                 sys.exit("Should never be reached!!! Check dtaset_class_type argument")
             # ensure the inference format matches that of training.
