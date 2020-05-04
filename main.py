@@ -210,6 +210,8 @@ def get_learning_rate(args, epoch):
         return cf.learning_rate_mtd2(args.lr, epoch)
     elif args.lr_scheduler == 'mtd2':
         return cf.learning_rate_mtd2(args.lr, epoch)
+    elif args.lr_scheduler == 'mtd3':
+        return cf.learning_rate_mtd3(args.lr, epoch)
     else:
         sys.exit("Error! Unrecognized learing rate scheduler")
 

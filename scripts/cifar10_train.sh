@@ -12,11 +12,10 @@ python main.py \
     --dataset_class_type='class folders'	\
     --datatransform='data_transform2'	\
 	--batch_size=128    \
-	--input_image_size=32	\
 	--lr=0.1	\
 	--lr_scheduler=mtd2     \
 	--batch_size=128    \
-	--net_type=efficientnetB0	\
+	--net_type=resnet50	\
 	--dropout=0	\
 	--dataset=cifar10	\
 	--resume_from_model=''  \

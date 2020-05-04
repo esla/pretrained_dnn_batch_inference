@@ -71,9 +71,9 @@ def learning_rate_mtd3(initial_lr, epoch):
     elif epoch >= 150:
         initial_lr = 0.01
     elif epoch > 250:
-        initial_lr = 0.001
-    elif epoch > 350:
         initial_lr = 0.0001
+    elif epoch > 350:
+        initial_lr = 0.00001
     return initial_lr
 
 
