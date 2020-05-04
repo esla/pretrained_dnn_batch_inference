@@ -40,7 +40,7 @@ def learning_rate_mtd1(initial_lr, epoch):
 
 
 # exp lr_schedule1
-def learning_rate_mine(initial_lr, epoch):
+def learning_rate_mtd2(initial_lr, epoch):
     if epoch < 20:
         initial_lr = initial_lr
     if epoch >= 20:
@@ -65,7 +65,7 @@ def learning_rate_mine(initial_lr, epoch):
 
 
 # default lr_schedule
-def learning_rate(initial_lr, epoch):
+def learning_rate_mtd3(initial_lr, epoch):
     if epoch < 150:
         initial_lr = initial_lr
     elif epoch >= 150:

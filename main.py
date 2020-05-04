@@ -203,6 +203,18 @@ def get_network(args, num_classes):
         sys.exit("!!!! Unknown args.input_image_size !!!!")
 
 
+def get_learning_rate(args, epoch):
+    if args.lr_scheduler == 'mtd1':
+        return cf.learning_rate_mtd1(args.lr, epoch)
+    elif args.lr_scheduler == 'mtd2':
+        return cf.learning_rate_mtd2(args.lr, epoch)
+    elif args.lr_scheduler == 'mtd2':
+        return cf.learning_rate_mtd2(args.lr, epoch)
+    else:
+        sys.exit("Error! Unrecognized learing rate scheduler")
+
+
+
 def show_dataloader_images(data_loader, augs, idx, is_save=False, save_dir="./sample_images"):
     # Get a batch of training data
     (inputs, targets), img_names = next(iter(data_loader))
@@ -242,7 +254,8 @@ def train_model(net, epoch, args):
     # metrics
     metrics = {}
 
-    optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0, weight_decay=5e-4)
+    #optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0, weight_decay=5e-4)
+    optimizer = optim.SGD(net.parameters(), lr=get_learning_rate(args, epoch), momentum=0, weight_decay=5e-4)
     #optimizer = optim.Adam(net.parameters(), lr=cf.learning_rate(lr, epoch))
 
     print('\n=> Training Epoch #%d' % epoch)
@@ -414,11 +427,6 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
                 'acc': accuracy,
                 'epoch': epoch,
             }
-            if not os.path.isdir('checkpoint'):
-                os.mkdir('checkpoint')
-
-            if not os.path.isdir('checkpoint/'+experiment_dir):
-                os.mkdir('checkpoint/'+experiment_dir)
 
             save_point = './checkpoint/' + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + os.sep
 
@@ -467,6 +475,7 @@ if __name__ == '__main__':
     training_group.add_argument('--estimate_lr', '-lre',action='store_true', help='Use LR Finder to get rough estimate of start lr')
     training_group.add_argument('--resume_from_model', '-rm', help='Model to load to resume training from')
     training_group.add_argument('--lr', default=0.001, type=float, help='learning_rate')
+    training_group.add_argument('--lr_scheduler', type=str, help='Select the LR scheduler')
     training_group.add_argument('--batch_size', default=32, type=int, help='training batch size')
     training_group.add_argument('--net_type', default='wide-resnet', type=str, help='model')
     training_group.add_argument('--depth', default=28, type=int, help='depth of model')
@@ -665,6 +674,18 @@ if __name__ == '__main__':
     else:
         sys.exit("ERROR! This place should never be reached")
 
+    # Save experiment configurations
+    if not os.path.isdir('checkpoint'):
+        os.mkdir('checkpoint')
+
+    if not os.path.isdir('checkpoint/' + experiment_dir):
+        #os.mkdir('checkpoint/' + experiment_dir)
+        os.makedirs("checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/")
+
+    exp_conf_file = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_setting.txt"
+    with open(exp_conf_file, 'a+') as f:
+        f.write('\n'.join(sys.argv[1:]))
+
     if args.inference_only:
         print('\n[Inference Phase] : Model setup')
         checkpoint_file = args.inference_model
@@ -740,7 +761,7 @@ if __name__ == '__main__':
         assert dataset_class_type == "class folders", 'This only works for class folder dataset type'
         # previous weight_decay = 5e-4
         # another one to try weight_decay=1e-2)
-        #optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0.9, weight_decay=5e-4)
+        #optimizer = optim.SGD(net.parameters(), lr=get_learning_rate(args, epoch), momentum=0.9, weight_decay=5e-4)
         optimizer = optim.Adam(net.parameters(), lr=1e-7)
         lr_finder = LRFinder(net, optimizer, criterion, device="cuda")
         #lr_finder.range_test(train_loader, end_lr=100, num_iter=100, step_mode="exp")
