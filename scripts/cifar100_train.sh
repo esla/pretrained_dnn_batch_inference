@@ -10,7 +10,7 @@ python main.py \
 	--lr=0.1	\
 	--lr_scheduler=mtd3	\
 	--batch_size=128    \
-	--net_type=efficientnetB0	\
+	--net_type=lenet	\
 	--dropout=0	\
 	--dataset=cifar100	\
 	--resume_from_model=''  \

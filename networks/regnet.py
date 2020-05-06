@@ -116,7 +116,7 @@ def RegNetX_200MF(num_classes):
         'bottleneck_ratio': 1,
         'se_ratio': 0,
     }
-    return RegNet(cfg, , num_classes=num_classes)
+    return RegNet(cfg, num_classes=num_classes)
 
 
 def RegNetX_400MF(num_classes):
