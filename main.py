@@ -91,33 +91,33 @@ def get_loss_criterion(args, gamma=0, alpha=None):
 
 def get_network_32(args, num_classes):  # To Do: Currently works only for num_classes = 10
     if args.net_type == 'lenet':
-        #net = LeNet(num_classes)
-        net = LeNet()
+        net = LeNet(num_classes)
+        #net = LeNet()
         file_name = 'lenet'
 
     elif 'VGG' in args.net_type.upper():
-        net = VGG(args.net_type.upper())
+        net = VGG(args.net_type.upper(), num_classes=num_classes)
         file_name = args.net_type
     elif args.net_type == 'resnet18':
-        net = ResNet18()
+        net = ResNet18(num_classes)
         file_name = args.net_type
     elif args.net_type == 'resnet34':
-        net = ResNet18()
+        net = ResNet34(num_classes)
         file_name = args.net_type
     elif args.net_type == 'resnet50':
-        net = ResNet18()
+        net = ResNet50(num_classes)
         file_name = args.net_type
     elif args.net_type == 'resnet101':
-        net = ResNet18()
+        net = ResNet101(num_classes)
         file_name = args.net_type
     elif args.net_type == 'resnet152':
-        net = ResNet18()
+        net = ResNet101(num_classes)
         file_name = args.net_type
     elif args.net_type == 'resnext29_2x64d':
-        net = ResNeXt29_2x64d()
+        net = ResNeXt29_2x64d(num_classes=num_classes)
         file_name = 'resnext29_2x64d'
     elif args.net_type == 'efficientnetB0':
-        net = EfficientNetB0()
+        net = EfficientNetB0(num_classes=num_classes)
         file_name = args.net_type
     # elif args.net_type == 'wide-resnet':
     #     net = Wide_ResNet(args.depth, args.widen_factor, args.dropout, num_classes)
