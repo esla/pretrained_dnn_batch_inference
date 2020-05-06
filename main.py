@@ -113,6 +113,9 @@ def get_network_32(args, num_classes):  # To Do: Currently works only for num_cl
     elif args.net_type == 'resnet152':
         net = ResNet18()
         file_name = args.net_type
+    elif args.net_type == 'resnext29_2x64d':
+        net = ResNeXt29_2x64d()
+        file_name = 'resnext29_2x64d'
     elif args.net_type == 'efficientnetB0':
         net = EfficientNetB0()
         file_name = args.net_type

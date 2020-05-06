@@ -72,9 +72,9 @@ def learning_rate_mtd3(initial_lr, epoch):
     elif epoch < 250:
         return 0.01
     elif epoch < 350:
-        return 0.0001
+        return 0.001
     else:
-        return 0.00001
+        return 0.0001
 
 def get_hms(seconds):
     m, s = divmod(seconds, 60)
