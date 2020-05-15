@@ -599,6 +599,23 @@ if __name__ == '__main__':
         ]),
     }
 
+    data_transforms4 = {
+        'train': transforms.Compose([
+            transforms.Resize(augs.size),
+            transforms.RandomResizedCrop(augs.size, scale=(0.5, 1.0)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(augs.mean, augs.std)
+        ]),
+        'val': transforms.Compose([
+            transforms.Resize(augs.size),
+            transforms.CenterCrop(augs.size),
+            transforms.ToTensor(),
+            transforms.Normalize(augs.mean, augs.std)
+        ]),
+    }
+
+
 
     # Select the appropriate data transformation
     if args.data_transform == 'data_transform1':
@@ -609,6 +626,9 @@ if __name__ == '__main__':
         val_transform = data_transforms['val']
     elif args.data_transform == 'data_transform3':
         train_transform = data_transforms3['train']
+        val_transform = data_transforms3['val']
+    elif args.data_transform == 'data_transform4':
+        train_transform = data_transforms4['train']
         val_transform = data_transforms3['val']
     else:
         sys.exit("Error! Please provide the appropriate transform")
