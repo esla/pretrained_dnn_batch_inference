@@ -275,6 +275,18 @@ def train_model(net, epoch, args):
         loss.backward()  # Backward Propagation
         optimizer.step()  # Optimizer update
 
+        #T1 = torch.max(outputs).item()    # idea 1
+        #print("\nT1: ", T)
+        T2 = torch.max(torch.FloatTensor.abs(outputs)).item() # idea2
+
+        if T2 < 4:  # idea 3
+            T = 1
+        else:
+            T = T2
+
+        #print("\nT: ", T)
+        outputs = torch.mul(outputs, 1/T)
+
         train_loss += loss.item()
         _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
@@ -413,7 +425,7 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     metrics['ece_total'] = ece_results['ece_total']
     metrics['ece_pos_gap'] = ece_results['ece_pos_gap']
     metrics['ece_neg_gap'] = ece_results['ece_neg_gap']
-
+    
     if is_validation_mode:
         print("\n| Validation Epoch #%d\t| Loss: %.4f | Corr Loss: %.4f | Incorr Loss: %.4f | Acc@1: %.2f%% | BalAcc@1: %.2f%% "
             " | ECE_Total: %.6f | ECE_Pos: %.6f | ECE_Neg: %.6f | auc: %.2f%%" %
@@ -425,6 +437,11 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
 
     if is_validation_mode:
         if accuracy > best_accuracy  or accuracy  - metrics['test_loss_incorrects'] > best_acc_ace:  # stopping criteria idea 2
+
+            if accuracy > best_accuracy:
+                suffix = 'val_acc'
+            else:
+                suffix = 'val_acc_incorr_nll'
 
             print('| Saving Best model...\t\t\tTop1 = %.2f%%' % accuracy)
             state = {
@@ -444,7 +461,7 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             torch.save(state, saved_model_curr_best)
             print("Saving model: {}".format(saved_model_overall_best))
             torch.save(state, saved_model_overall_best)
-            val_csv_file = save_point + file_name + '-epoch-' + str(epoch) + '.csv'
+            val_csv_file = save_point + file_name + '-epoch-' + str(epoch) + '-' + suffix + '.csv'
             print("saving validation results: {}".format(val_csv_file))
             df.to_csv(val_csv_file)
 
@@ -476,6 +493,7 @@ if __name__ == '__main__':
     dataset_params_group.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/cifar100]')
     dataset_params_group.add_argument('--data_transform', type=str, help='The dataset transform to be used')
 
+    training_group.add_argument('--validate_train_dataset', '-t', action='store_true', help='resume from checkpoint')
     training_group.add_argument('--resume_training', '-r', action='store_true', help='resume from checkpoint')
     training_group.add_argument('--estimate_lr', '-lre',action='store_true', help='Use LR Finder to get rough estimate of start lr')
     training_group.add_argument('--resume_from_model', '-rm', help='Model to load to resume training from')
@@ -602,7 +620,7 @@ if __name__ == '__main__':
     data_transforms4 = {
         'train': transforms.Compose([
             transforms.Resize(augs.size),
-            transforms.RandomResizedCrop(augs.size, scale=(0.5, 1.0)),
+            transforms.RandomResizedCrop(augs.size, scale=(0.7, 1.0)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(augs.mean, augs.std)
@@ -676,7 +694,7 @@ if __name__ == '__main__':
                 #val_set = FolderDatasetWithImgPath(val_root, transform=data_transforms['val'])
                 train_set = FolderDatasetWithImgPath(train_root, transform=train_transform)
                 val_set = FolderDatasetWithImgPath(val_root, transform=val_transform)
-                val_set_lr_est = torchvision.datasets.ImageFolder(val_root, transform=val_transform)
+                val_set_lr_est = torchvision.datasets.ImageFolder(train_root, transform=val_transform)
                 print("class info: {}".format(train_set.class_to_idx))
             elif dataset_class_type == "csv files":
                 train_csv = csv_root_dir + "/" + args.dataset + "_train.csv"
@@ -730,6 +748,9 @@ if __name__ == '__main__':
     exp_conf_file = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_setting.txt"
     with open(exp_conf_file, 'a+') as f:
         f.write('\n'.join(sys.argv[1:]))
+    
+    # get the appropriate loss criterion for training
+    criterion = get_loss_criterion(args)
 
     if args.inference_only:
         print('\n[Inference Phase] : Model setup')
@@ -746,21 +767,32 @@ if __name__ == '__main__':
             cudnn.benchmark = True
 
         print('\n=> Inference in Progress')
-        all_results_df, logits, true_labels, pred_labels, metrics = test_model(net, inference_loader)
+        if args.validate_train_dataset:
+            all_results_df, logits, true_labels, pred_labels, metrics = test_model(net, inference_loader, is_validation_mode=True)
+        else:
+            all_results_df, logits, true_labels, pred_labels, metrics = test_model(net, inference_loader)
 
         # write results
-        filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference.csv"
+        dataset_category = 'inference'
+        if args.validate_train_dataset:
+            filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference_train_dataset.csv"
+            prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name + 'validated_train_dataset'
+        else:
+            filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference.csv"
+            prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
         with open(filename, 'a+') as infile:
             csv_writer = csv.writer(infile, dialect='excel')
             csv_writer.writerow(list(metrics.values()))
 
         # Save results to files
-        dataset_category = 'inference'
-        prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
-        all_results_df.to_csv(prefix_result_file + ".csv")
+        #dataset_category = 'inference'
+        #prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
+        #all_results_df.to_csv(prefix_result_file + ".csv")
+        all_results_df.to_csv(filename)
 
-        with open(prefix_result_file + '.logits', 'wb') as f:
-            pickle.dump((true_labels, pred_labels, logits), f)
+        if args.validate_train_dataset:
+            with open(prefix_result_file + '.logits', 'wb') as f:
+                pickle.dump((true_labels, pred_labels, logits), f)
 
         sys.exit(0)
 
@@ -792,7 +824,7 @@ if __name__ == '__main__':
         cudnn.benchmark = True
 
     # get the appropriate loss criterion for training
-    criterion = get_loss_criterion(args)
+    #criterion = get_loss_criterion(args)
 
 
     print('\n[Phase 3] : Training model')
