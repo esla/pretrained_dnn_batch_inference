@@ -7,9 +7,10 @@ python main.py \
     	--dataset_class_type='class folders'	\
     	--data_transform='data_transform4'	\
         --train_loss_idea='loss_idea4'	\
+        --temp_scale_idea='temp_scale_default'	\
 	--lr=0.8	\
 	--lr_scheduler=mtd2     \
-	--batch_size=32    \
+	--batch_size=64    \
 	--net_type=resnext29_2x64d	\
 	--dropout=0	\
 	--dataset=cifar10	\

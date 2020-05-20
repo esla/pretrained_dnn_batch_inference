@@ -277,13 +277,20 @@ def train_model(net, epoch, args):
 
         #T1 = torch.max(outputs).item()    # idea 1
         #print("\nT1: ", T)
-        T2 = torch.max(torch.FloatTensor.abs(outputs)).item() # idea2
-
-        if T2 < 4:  # idea 3
+        if args.temp_scale_idea == 'temp_scale_default':
             T = 1
+        elif args.temp_scale_idea == 'temp_scale_idea1':
+            T = torch.max(torch.FloatTensor.abs(outputs)).item() # idea2
+        elif args.temp_scale_idea == 'temp_scale_idea2':
+            T = torch.max(outputs).item() # idea2
+        elif args.temp_scale_idea == 'temp_scale_idea3':
+            T_temp = torch.max(torch.FloatTensor.abs(outputs)).item() # idea2
+            if T_temp < 4:  # idea 3
+                T = 1
+            else:
+                T = T_temp
         else:
-            T = T2
-        T = 1   # Default softmax without temperature scaling
+            sys.exit('Error! Please select a valid temperature scaling')
         #print("\nT: ", T)
         outputs = torch.mul(outputs, 1/T)
 
@@ -496,6 +503,7 @@ if __name__ == '__main__':
 
     # Ideas that I am exploring
     training_group.add_argument('--train_loss_idea', '-tl', type=str, help='Select the training loss idea to use')
+    training_group.add_argument('--temp_scale_idea', '-ts', type=str, help='Select the temperature scaling to use')
 
     training_group.add_argument('--validate_train_dataset', '-t', action='store_true', help='resume from checkpoint')
     training_group.add_argument('--resume_training', '-r', action='store_true', help='resume from checkpoint')
