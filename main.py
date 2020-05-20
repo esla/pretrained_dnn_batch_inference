@@ -283,7 +283,7 @@ def train_model(net, epoch, args):
             T = 1
         else:
             T = T2
-
+        T = 1   # Default softmax without temperature scaling
         #print("\nT: ", T)
         outputs = torch.mul(outputs, 1/T)
 
@@ -492,6 +492,10 @@ if __name__ == '__main__':
     dataset_params_group.add_argument('--datasets_csv_root_dir', '-csv_dir', help='Root dir for all dataset csv files')
     dataset_params_group.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/cifar100]')
     dataset_params_group.add_argument('--data_transform', type=str, help='The dataset transform to be used')
+
+
+    # Ideas that I am exploring
+    training_group.add_argument('--train_loss_idea', '-tl', type=str, help='Select the training loss idea to use')
 
     training_group.add_argument('--validate_train_dataset', '-t', action='store_true', help='resume from checkpoint')
     training_group.add_argument('--resume_training', '-r', action='store_true', help='resume from checkpoint')
@@ -864,11 +868,23 @@ if __name__ == '__main__':
         # validate_model(net, epoch)
         df, logits, true_labels, pred_labels, val_metrics = test_model(net, val_loader, epoch, is_validation_mode=True)
 
+        
         # idea: update the gamma in a focal loss (Experimental)
-        #gamma = 10*val_metrics['ece_pos_gap']   # loss idea 1
-        #gamma = val_metrics['test_loss_incorrects']  # loss idea 2
-        gamma = val_metrics['test_loss_incorrects'] + val_metrics['ece_total'] # loss idea 3
-        #criterion = FocalLoss2(10*val_metrics['ece_pos_gap'])
+        print('esla debug1')
+        if args.train_loss_idea == 'ce':
+            gamma = 0.0
+        elif args.train_loss_idea == 'loss_idea1':
+            gamma = 10*val_metrics['ece_pos_gap']   # loss idea 1
+        elif args.train_loss_idea == 'loss_idea2':
+            gamma = val_metrics['test_loss_incorrects']  # loss idea 2
+        elif args.train_loss_idea == 'loss_idea3':
+            gamma = val_metrics['test_loss_incorrects'] + val_metrics['ece_total'] # loss idea 3
+        elif args.train_loss_idea == 'loss_idea4':
+            gamma = val_metrics['test_loss_incorrects'] + val_metrics['ece_pos_gap'] # loss idea 4
+        else:
+            sys.exit('Error!, Choose a valid training loss idea')
+        print('esla debug2')
+
         criterion = get_loss_criterion(args, gamma=gamma)
 
         # write results

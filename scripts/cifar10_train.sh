@@ -6,6 +6,7 @@ python main.py \
 	--datasets_class_folders_root_dir=/home/esla/research/datasets/cifar10-pngs-in-folders/cifar10  	\
     	--dataset_class_type='class folders'	\
     	--data_transform='data_transform4'	\
+        --train_loss_idea='loss_idea4'	\
 	--lr=0.8	\
 	--lr_scheduler=mtd2     \
 	--batch_size=32    \
