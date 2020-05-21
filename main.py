@@ -523,6 +523,7 @@ if __name__ == '__main__':
     inference_only_group.add_argument('--inference_model', '-im', help='Model to load for inference')
     inference_only_group.add_argument("--inference_dataset_dir", "-idir",
                                       help="root directory for inference class folders or CSV files")
+    inference_only_group.add_argument('--inference_filename', '-ifn', type=str, help='file name to save inference results')
 
     args = parser.parse_args()
 
@@ -762,7 +763,8 @@ if __name__ == '__main__':
         f.write('\n'.join(sys.argv[1:]))
     
     # get the appropriate loss criterion for training
-    criterion = get_loss_criterion(args)
+    if not args.inference_only:
+        criterion = get_loss_criterion(args)
 
     if args.inference_only:
         print('\n[Inference Phase] : Model setup')
@@ -790,7 +792,7 @@ if __name__ == '__main__':
             filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference_train_dataset.csv"
             prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name + 'validated_train_dataset'
         else:
-            filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference.csv"
+            filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + args.inference_filename
             prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
         with open(filename, 'a+') as infile:
             csv_writer = csv.writer(infile, dialect='excel')
