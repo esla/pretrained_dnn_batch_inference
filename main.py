@@ -763,8 +763,8 @@ if __name__ == '__main__':
         f.write('\n'.join(sys.argv[1:]))
     
     # get the appropriate loss criterion for training
-    if not args.inference_only:
-        criterion = get_loss_criterion(args)
+    #if not args.inference_only:
+    criterion = get_loss_criterion(args)
 
     if args.inference_only:
         print('\n[Inference Phase] : Model setup')
