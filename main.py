@@ -698,11 +698,11 @@ if __name__ == '__main__':
         #val_loader_lr_est = torch.utils.data.DataLoader(val_set_lr_est, batch_size=batch_size, shuffle=False,
         #                                                num_workers=4)
 
-    elif args.dataset_class_type == "class folders":
+    elif args.dataset_class_type == "class_folders":
         if is_training:
             train_root = datasets_root_dir + "/train"
             val_root = datasets_root_dir + "/val"
-            if dataset_class_type == "class folders":
+            if dataset_class_type == "class_folders":
                 #train_set = FolderDatasetWithImgPath(train_root, transform=data_transforms['train'])
                 #val_set = FolderDatasetWithImgPath(val_root, transform=data_transforms['val'])
                 train_set = FolderDatasetWithImgPath(train_root, transform=train_transform)
@@ -730,7 +730,7 @@ if __name__ == '__main__':
 
         if is_inference:
             inference_root = args.inference_dataset_dir
-            if dataset_class_type == "class folders":
+            if dataset_class_type == "class_folders":
                 inference_set = FolderDatasetWithImgPath(inference_root, transform=val_transform)
             elif dataset_class_type == "csv files":
                 inference_csv = inference_root + "/" + "isic2019_val.csv"
@@ -849,7 +849,7 @@ if __name__ == '__main__':
     elapsed_time = 0
     
     if args.estimate_lr:
-        assert dataset_class_type == "class folders", 'This only works for class folder dataset type'
+        assert dataset_class_type == "class_folders", 'This only works for class folder dataset type'
         # previous weight_decay = 5e-4
         # another one to try weight_decay=1e-2)
         #optimizer = optim.SGD(net.parameters(), lr=get_learning_rate(args, epoch), momentum=0.9, weight_decay=5e-4)
