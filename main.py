@@ -22,7 +22,7 @@ import csv
 from networks import *
 from torch.autograd import Variable
 
-from torchvision import models
+import torchvision.models as models
 
 
 from auglib.dataset_loader import FolderDatasetWithImgPath
@@ -51,6 +51,20 @@ from torch_lr_finder import LRFinder
 # Config
 import config as cf
 
+def get_topk_accuracy(outputs, targets, topk=(1,)):
+    """Computes the precision@k for the specified values of k"""
+    maxk = max(topk)
+    batch_size = targets.size(0)
+
+    _, pred = outputs.topk(maxk, 1, True, True)
+    pred = pred.t()
+    correct = pred.eq(targets.view(1, -1).expand_as(pred))
+
+    result = []
+    for k in topk:
+        correct_k = correct[:k].view(-1).float().sum(0)
+        result.append(correct_k.mul_(100.0 / batch_size))
+    return result
 
 def get_one_hot_embedding(labels, num_classes):
     """Embedding labels to one-hot form.
@@ -297,12 +311,14 @@ def train_model(net, epoch, args):
         train_loss += loss.item()
         _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
-        correct += predicted.eq(targets.data).cpu().sum()
+        #correct += predicted.eq(targets.data).cpu().sum()
+        accuracy = get_topk_accuracy(outputs, targets)[0]
+        acc_top2 = get_topk_accuracy(outputs, targets, topk=(2,))[0]
 
         sys.stdout.write('\r')
-        sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tLoss: %.4f Acc@1: %.3f%%'
+        sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tLoss: %.4f Acc@1: %.5f Acc@2: %.5f' 
                          % (epoch, num_epochs, batch_idx + 1,
-                            (len(train_set) // batch_size) + 1, loss.item(), 100. * correct / total))
+                            (len(train_set) // batch_size) + 1, loss.item(), accuracy.item(), acc_top2.item()))
         sys.stdout.flush()
 
     # print out current state of the learning rate
@@ -310,8 +326,9 @@ def train_model(net, epoch, args):
 
     print('|\t\tLoss: %.4f Acc@1: %.3f%%' % (train_loss / batch_idx, 100. * correct / total))
     # metrics
-    accuracy = 100. * correct / total
-    metrics['accuracy'] = accuracy.cpu().data.numpy()
+    #accuracy = 100. * correct / total
+    #metrics['accuracy'] = accuracy.cpu().data.numpy()
+    metrics['accuracy'] = accuracy.item()
     metrics['train_loss'] = train_loss / batch_idx
 
     return metrics
@@ -394,6 +411,8 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
                                                                                            targets_for_incorrect.cuda(),
                                                                                            num_classes))
 
+    accuracy = get_topk_accuracy(all_logits, all_targets)[0].item()
+
 
     max_softmax_scores = list(np.max(softmax_values, axis=1))
     # esla debug (alternative way to get the predicted labels
@@ -417,8 +436,8 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     auc = roc_auc_score(true_labels_1_hot, softmax_values)
 
     # TBD: get this into a metrics data structure and return it if testing labeled datasets
-    accuracy = 100. * correct / total
-    accuracy = accuracy.cpu().data.numpy()
+    #accuracy = 100. * correct / total
+    #accuracy = accuracy.cpu().data.numpy()
     balanced_accuracy = balanced_accuracy * 100
     auc = auc * 100
 
