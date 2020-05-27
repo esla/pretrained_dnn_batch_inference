@@ -289,25 +289,6 @@ def train_model(net, epoch, args):
         loss.backward()  # Backward Propagation
         optimizer.step()  # Optimizer update
 
-        #T1 = torch.max(outputs).item()    # idea 1
-        #print("\nT1: ", T)
-        if args.temp_scale_idea == 'temp_scale_default':
-            T = 1
-        elif args.temp_scale_idea == 'temp_scale_idea1':
-            T = torch.max(torch.FloatTensor.abs(outputs)).item() # idea2
-        elif args.temp_scale_idea == 'temp_scale_idea2':
-            T = torch.max(outputs).item() # idea2
-        elif args.temp_scale_idea == 'temp_scale_idea3':
-            T_temp = torch.max(torch.FloatTensor.abs(outputs)).item() # idea2
-            if T_temp < 4:  # idea 3
-                T = 1
-            else:
-                T = T_temp
-        else:
-            sys.exit('Error! Please select a valid temperature scaling')
-        #print("\nT: ", T)
-        outputs = torch.mul(outputs, 1/T)
-
         train_loss += loss.item()
         _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
@@ -845,8 +826,8 @@ if __name__ == '__main__':
         net_name = os.path.basename(checkpoint_file)
         checkpoint = torch.load(checkpoint_file)
         net = checkpoint['model']
-        start_epoch = 535
-        best_accuracy = 63.0
+        start_epoch = 2
+        best_accuracy = 5.0
     else:
         print('| Building net type [' + args.net_type + ']...')
         net, file_name = get_network(args, num_classes)
