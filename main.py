@@ -45,6 +45,7 @@ from experimental_dl_codes.from_kaggle_post_focal_loss import FocalLoss as Focal
 from experimental_dl_codes.focal_loss2 import FocalLoss as FocalLoss2
 from experimental_dl_codes.ohem import NllOhem
 from experimental_dl_codes.focal_loss3 import FocalLoss as FocalLoss3
+from experimental_dl_codes.other_transforms import ClaheTransform
 
 from torch_lr_finder import LRFinder
 
@@ -191,6 +192,11 @@ def get_network_224(args, num_classes):
         net = models.vgg11(pretrained=False)
         num_features = net.classifier[6].in_features
         net.classifier[6] = nn.Linear(num_features, num_classes)
+    elif args.net_type == 'vgg16':
+        file_name = args.net_type
+        net = models.vgg16(pretrained=True)
+        num_features = net.classifier[6].in_features
+        net.classifier[6] = nn.Linear(num_features, num_classes)
 
     elif args.net_type == 'squeezenet1_1':
         file_name = args.net_type
@@ -260,22 +266,65 @@ def show_images(inp, full_img_name, augs, is_save, title):
     else:
         plt.show()
 
+def perform_temperature_scaling(outputs):
+    if args.temp_scale_idea == 'temp_scale_default':
+        Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
+        #print("Tmax: ", Tmax)
+        T = 1
+    elif args.temp_scale_idea == 'temp_scale_idea1':
+        T = torch.max(torch.FloatTensor.abs(outputs)).item()  # idea2
+        Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
+        #print("Tmax: ", Tmax)
+    elif args.temp_scale_idea == 'temp_scale_idea2':
+        T = torch.max(outputs).item()  # idea2
+        Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
+        #print("Tmax: ", Tmax)
+    elif args.temp_scale_idea == 'temp_scale_idea3':
+        Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()  # idea2
+        if Tmax < 4:  # idea 3
+            T = 1
+        else:
+            T = Tmax
+        Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
+        #print("Tmax: ", Tmax)
+    elif args.temp_scale_idea == 'temp_scale_idea4':
+        T = torch.max(outputs).item() - torch.min(outputs).item()  # idea4
+        Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
+        #print("Tmax: ", Tmax)
+    else:
+        sys.exit('Error! Please select a valid temperature scaling')
+    # print("\nT: ", T)
+    outputs = torch.mul(outputs, 2.0 / T)
+    return outputs, T, Tmax
+
 
 def train_model(net, epoch, args):
+    global last_saved_lr, load_from_last_best, current_lr
     net.train()
     net.training = True
     train_loss = 0
     correct = 0
     total = 0
     # lr = cf.learning_rate(args.lr, epoch)
-    lr = args.lr
+    #lr = args.lr
 
     # metrics
     metrics = {}
 
-    #optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0, weight_decay=5e-4)
     optimizer = optim.SGD(net.parameters(), lr=get_learning_rate(args, epoch), momentum=0, weight_decay=5e-4)
-    #optimizer = optim.Adam(net.parameters(), lr=cf.learning_rate(lr, epoch))
+
+    # optimizer = optim.Adam(net.parameters(), lr=cf.learning_rate(lr, epoch))
+
+    # print out current state of the learning rate
+    print("\n\n param_group: ", optimizer.param_groups[0]['lr'])
+    current_lr = optimizer.param_groups[0]['lr']
+
+    # if current_lr < last_saved_lr:
+    #     #load_from_last_best = True
+    #     # Load last best saved model (Maybe not useful)
+    #     print("\nLoading last best saved model: ", saved_model_overall_best)
+    #     net = load_checkpoint(saved_model_overall_best)
+    #     last_saved_lr = current_lr
 
     print('\n=> Training Epoch #%d' % epoch)
     for batch_idx, data in enumerate(train_loader):
@@ -285,6 +334,10 @@ def train_model(net, epoch, args):
         optimizer.zero_grad()
         inputs, targets = Variable(inputs), Variable(targets)
         outputs = net(inputs)  # Forward Propagation
+
+        #outputs_t, T, Tmax = perform_temperature_scaling(outputs)
+
+        #print("outputs1: ", outputs)
         loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
         loss.backward()  # Backward Propagation
         optimizer.step()  # Optimizer update
@@ -292,28 +345,28 @@ def train_model(net, epoch, args):
         train_loss += loss.item()
         _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
-        #correct += predicted.eq(targets.data).cpu().sum()
-        accuracy = get_topk_accuracy(outputs, targets)[0]
-        acc_top2 = get_topk_accuracy(outputs, targets, topk=(2,))[0]
+        correct += predicted.eq(targets.data).cpu().sum()
 
         sys.stdout.write('\r')
-        sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tLoss: %.4f Acc@1: %.5f Acc@2: %.5f' 
+        #if math.isnan(Tmax):
+        if True:
+            sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d] \t\t Loss: %.4f Acc@1: %.3f%% '
                          % (epoch, num_epochs, batch_idx + 1,
-                            (len(train_set) // batch_size) + 1, loss.item(), accuracy.item(), acc_top2.item()))
-        sys.stdout.flush()
+                            (len(train_set) // batch_size) + 1, loss.item(), 100. * correct / total))
+        else:
+            sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d] |%3d |%3d\t\t Loss: %.4f Acc@1: %.3f%%'
+                         % (epoch, num_epochs, batch_idx + 1,
+                            (len(train_set) // batch_size) + 1, T, Tmax, loss.item(), 100. * correct / total))
 
-    # print out current state of the learning rate
-    print("\n\n param_group: ", optimizer.param_groups[0]['lr'])
+        sys.stdout.flush()
 
     print('|\t\tLoss: %.4f Acc@1: %.3f%%' % (train_loss / batch_idx, 100. * correct / total))
     # metrics
-    #accuracy = 100. * correct / total
-    #metrics['accuracy'] = accuracy.cpu().data.numpy()
-    metrics['accuracy'] = accuracy.item()
+    accuracy = 100. * correct / total
+    metrics['accuracy'] = accuracy.cpu().data.numpy()
     metrics['train_loss'] = train_loss / batch_idx
 
     return metrics
-
 
 def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     global best_accuracy, best_acc_ace, logits, true_labels, pred_labels
@@ -632,13 +685,20 @@ if __name__ == '__main__':
 
     data_transforms4 = {
         'train': transforms.Compose([
+            #ClaheTransform(),
+            #transforms.ToPILImage(),
+            transforms.Grayscale(num_output_channels=3),
             transforms.Resize(augs.size),
-            transforms.RandomResizedCrop(augs.size, scale=(0.7, 1.0)),
+            transforms.RandomResizedCrop(augs.size, scale=(0.75, 1.0)),
+            torchvision.transforms.ColorJitter(hue=.05, saturation=.05),            
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(augs.mean, augs.std)
         ]),
         'val': transforms.Compose([
+            transforms.Grayscale(num_output_channels=3),
+            #ClaheTransform(),
+            #transforms.ToPILImage(),
             transforms.Resize(augs.size),
             transforms.CenterCrop(augs.size),
             transforms.ToTensor(),
