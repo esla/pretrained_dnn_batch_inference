@@ -52,6 +52,7 @@ from torch_lr_finder import LRFinder
 # Config
 import config as cf
 
+
 def get_topk_accuracy(outputs, targets, topk=(1,)):
     """Computes the precision@k for the specified values of k"""
     maxk = max(topk)
@@ -66,6 +67,7 @@ def get_topk_accuracy(outputs, targets, topk=(1,)):
         correct_k = correct[:k].view(-1).float().sum(0)
         result.append(correct_k.mul_(100.0 / batch_size))
     return result
+
 
 def get_one_hot_embedding(labels, num_classes):
     """Embedding labels to one-hot form.
@@ -141,6 +143,38 @@ def get_network_32(args, num_classes):  # To Do: Currently works only for num_cl
         print('Error : Wrong Network selected for this input size')
         sys.exit(0)
     return net, file_name
+
+
+def decompose_loss(logits, targets, predictions):
+    # convert the type for targets to allow for concatenation with logits tesnsor
+    targets = targets.type('torch.FloatTensor').view(len(targets), 1).cuda()
+    predictions = predictions.type('torch.FloatTensor').view(len(predictions), 1).cuda()
+
+    temp_result = torch.cat([logits, targets, predictions], 1)
+
+    correct_cat = temp_result[:, :-1][temp_result[:, -1] == temp_result[:, -2]]
+    incorrect_cat = temp_result[:, :-1][temp_result[:, -1] != temp_result[:, -2]]
+
+    incorrect_outputs = incorrect_cat[:, :-1]
+    # esla debugging
+    # print("incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0]",
+    #       incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0].shape)
+    targets_for_incorrect = incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0].type('torch.LongTensor')
+
+    correct_outputs = correct_cat[:, :-1]
+    # # esla debugging
+    # print("correct_cat[:, -1].view(1, len(incorrect_outputs))[0]",
+    #       correct_cat[:, -1].view(1, len(correct_outputs))[0].shape)
+
+    # convert the type for targets back to torch.LongTensor
+    targets_for_correct = correct_cat[:, -1].view(1, len(correct_outputs))[0].type('torch.LongTensor')
+
+    loss_correctly_preds = criterion(correct_outputs, get_target_in_appropriate_format(args, targets_for_correct.cuda(),
+                                                                                       num_classes))
+    loss_incorrectly_preds = criterion(incorrect_outputs, get_target_in_appropriate_format(args,
+                                                                                           targets_for_incorrect.cuda(),
+                                                                                           num_classes))
+    return loss_correctly_preds, loss_incorrectly_preds
 
 
 # Return network and file name
@@ -231,13 +265,12 @@ def get_learning_rate(args, epoch):
         return cf.learning_rate_mtd1(args.lr, epoch)
     elif args.lr_scheduler == 'mtd2':
         return cf.learning_rate_mtd2(args.lr, epoch)
-    elif args.lr_scheduler == 'mtd2':
-        return cf.learning_rate_mtd2(args.lr, epoch)
     elif args.lr_scheduler == 'mtd3':
         return cf.learning_rate_mtd3(args.lr, epoch)
+    elif args.lr_scheduler == 'mtd4':
+        return cf.learning_rate_mtd4(args.lr, epoch)
     else:
         sys.exit("Error! Unrecognized learing rate scheduler")
-
 
 
 def show_dataloader_images(data_loader, augs, idx, is_save=False, save_dir="./sample_images"):
@@ -248,7 +281,7 @@ def show_dataloader_images(data_loader, augs, idx, is_save=False, save_dir="./sa
     # Make a grid from batch
     out = torchvision.utils.make_grid(inputs)
     full_img_name = os.path.join(save_dir, str(idx)+".png")
-    show_images(out, full_img_name, augs, is_save, title=[x for x in img_names])
+    show_images(out, full_img_name, augs, is_save=True, title=[x for x in img_names])
 
 
 def show_images(inp, full_img_name, augs, is_save, title):
@@ -262,9 +295,11 @@ def show_images(inp, full_img_name, augs, is_save, title):
     plt.title(title)
     plt.pause(0.01)  # pause a bit so that plots are updated
     if is_save:
+        print("saving {}".format(full_img_name))
         plt.savefig(full_img_name)
     else:
         plt.show()
+
 
 def perform_temperature_scaling(outputs):
     if args.temp_scale_idea == 'temp_scale_default':
@@ -334,16 +369,28 @@ def train_model(net, epoch, args):
         optimizer.zero_grad()
         inputs, targets = Variable(inputs), Variable(targets)
         outputs = net(inputs)  # Forward Propagation
+        _, predicted = torch.max(outputs.data, 1)
 
         #outputs_t, T, Tmax = perform_temperature_scaling(outputs)
 
         #print("outputs1: ", outputs)
-        loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
+        # esla temporarily commented out to test experimental idea below
+        #loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
+
+        # esla Experimental Idea: updating loss based on NLL for the incorrectly classified for every batch
+        loss_corr, loss_incorr = decompose_loss(outputs, targets, predicted)
+
+        threshold = 1.2
+
+        if (loss_incorr / loss_corr) > threshold:
+            loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
+        else:
+            loss = loss_incorr
+
         loss.backward()  # Backward Propagation
         optimizer.step()  # Optimizer update
 
         train_loss += loss.item()
-        _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
         correct += predicted.eq(targets.data).cpu().sum()
 
@@ -425,25 +472,33 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
         true_labels = all_targets.cpu().data.numpy().tolist()
         pred_labels = all_preds.cpu().data.numpy().tolist()
 
-    targets = all_targets.type('torch.FloatTensor').view(len(all_targets), 1).cuda()
-    preds = all_preds.type('torch.FloatTensor').view(len(all_preds), 1).cuda()
+    # targets = all_targets.type('torch.FloatTensor').view(len(all_targets), 1).cuda()
+    # preds = all_preds.type('torch.FloatTensor').view(len(all_preds), 1).cuda()
+    #
+    # temp_result = torch.cat([all_logits, targets, preds], 1)
+    #
+    # correct_cat = temp_result[:, :-1][temp_result[:, -1] == temp_result[:, -2]]
+    # incorrect_cat = temp_result[:, :-1][temp_result[:, -1] != temp_result[:, -2]]
+    #
+    # incorrect_outputs = incorrect_cat[:, :-1]
+    # #esla debugging
+    # print("incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0]",
+    #       incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0].shape)
+    # targets_for_incorrect = incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0].type('torch.LongTensor')
+    #
+    # correct_outputs = correct_cat[:, :-1]
+    # # esla debugging
+    # print("correct_cat[:, -1].view(1, len(incorrect_outputs))[0]",
+    #       correct_cat[:, -1].view(1, len(correct_outputs))[0].shape)
+    # targets_for_correct = correct_cat[:, -1].view(1, len(correct_outputs))[0].type('torch.LongTensor')
+    #
+    # loss_correctly_preds = criterion(correct_outputs, get_target_in_appropriate_format(args,targets_for_correct.cuda(),
+    #                                                                                    num_classes))
+    # loss_incorrectly_preds = criterion(incorrect_outputs, get_target_in_appropriate_format(args,
+    #                                                                                        targets_for_incorrect.cuda(),
+    #                                                                                        num_classes))
 
-    temp_result = torch.cat([all_logits, targets, preds], 1)
-
-    correct_cat = temp_result[:, :-1][temp_result[:, -1] == temp_result[:, -2]]
-    incorrect_cat = temp_result[:, :-1][temp_result[:, -1] != temp_result[:, -2]]
-
-    incorrect_outputs = incorrect_cat[:, :-1]
-    targets_for_incorrect = incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0].type('torch.LongTensor')
-
-    correct_outputs = correct_cat[:, :-1]
-    targets_for_correct = correct_cat[:, -1].view(1, len(correct_outputs))[0].type('torch.LongTensor')
-
-    loss_correctly_preds = criterion(correct_outputs, get_target_in_appropriate_format(args,targets_for_correct.cuda(),
-                                                                                       num_classes))
-    loss_incorrectly_preds = criterion(incorrect_outputs, get_target_in_appropriate_format(args,
-                                                                                           targets_for_incorrect.cuda(),
-                                                                                           num_classes))
+    loss_correctly_preds, loss_incorrectly_preds = decompose_loss(all_logits, all_targets, all_preds)
 
     accuracy = get_topk_accuracy(all_logits, all_targets)[0].item()
 
@@ -505,6 +560,7 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
 
             print('| Saving Best model...\t\t\tTop1 = %.2f%%' % accuracy)
             state = {
+                'whole_model': net,
                 'model': net.module if use_cuda else net,
                 'acc': accuracy,
                 'epoch': epoch,
@@ -515,8 +571,8 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             if not os.path.isdir(save_point):
                 os.mkdir(save_point)
 
-            saved_model_overall_best = save_point + file_name + '.t7'
-            saved_model_curr_best = save_point + file_name + '-epoch-' + str(epoch) + '.t7'
+            saved_model_overall_best = save_point + file_name + '.pth'
+            saved_model_curr_best = save_point + file_name + '-epoch-' + str(epoch) + '.pth'
             print("Saving model: {}".format(saved_model_curr_best))
             torch.save(state, saved_model_curr_best)
             print("Saving model: {}".format(saved_model_overall_best))
@@ -651,9 +707,9 @@ if __name__ == '__main__':
     # Just normalization for validation
     # esla TO DO: data transformation should contain no hardcoded values
     # data_transform2
-    data_transforms = {
+    data_transforms2 = {
         'train': transforms.Compose([
-            transforms.Resize(augs.size),
+            #transforms.Resize(augs.size),
             transforms.RandomResizedCrop(augs.size),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -687,9 +743,9 @@ if __name__ == '__main__':
         'train': transforms.Compose([
             #ClaheTransform(),
             #transforms.ToPILImage(),
-            transforms.Grayscale(num_output_channels=3),
-            transforms.Resize(augs.size),
-            transforms.RandomResizedCrop(augs.size, scale=(0.75, 1.0)),
+            #transforms.Grayscale(num_output_channels=3),
+            #transforms.Resize(augs.size),
+            transforms.RandomResizedCrop(augs.size, scale=(0.08, 0.5)),
             torchvision.transforms.ColorJitter(hue=.05, saturation=.05),            
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -713,8 +769,8 @@ if __name__ == '__main__':
         train_transform = transform_train
         val_transform = transform_test
     elif args.data_transform == 'data_transform2':
-        train_transform = data_transforms['train']
-        val_transform = data_transforms['val']
+        train_transform = data_transforms2['train']
+        val_transform = data_transforms2['val']
     elif args.data_transform == 'data_transform3':
         train_transform = data_transforms3['train']
         val_transform = data_transforms3['val']
@@ -871,8 +927,8 @@ if __name__ == '__main__':
         sys.exit(0)
 
     # To quickly visualize the effect of transforms from the dataloader
-    #for i in range(10):
-    #    show_dataloader_images(train_loader, augs, i, is_save=False, save_dir="./sample_images")
+    # for i in range(500):
+    #     show_dataloader_images(train_loader, augs, i, is_save=False, save_dir="./sample_images")
 
     # Model
     print('\n[Phase 2] : Model setup')

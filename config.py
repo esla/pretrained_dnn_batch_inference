@@ -12,6 +12,7 @@ mean = {
     'cifar100': (0.5071, 0.4867, 0.4408),
     'isic2019': (0.4914, 0.4822, 0.4465),
     'ba4': (0.4914, 0.4822, 0.4465),
+    'siim': (0.4914, 0.4822, 0.4465),
     'imagenet': (0.4914, 0.4822, 0.4465),
 
 }
@@ -21,6 +22,7 @@ std = {
     'cifar100': (0.2675, 0.2565, 0.2761),
     'isic2019': (0.2023, 0.1994, 0.2010),
     'ba4': (0.2023, 0.1994, 0.2010),
+    'siim': (0.2023, 0.1994, 0.2010),
     'imagenet': (0.2023, 0.1994, 0.2010),
 }
 
@@ -63,6 +65,29 @@ def learning_rate_mtd2(initial_lr, epoch):
         initial_lr = 0.0004
     if epoch > 180:
         initial_lr = 0.0001
+    return initial_lr
+
+def learning_rate_mtd4(initial_lr, epoch):
+    if epoch < 20:
+        initial_lr = initial_lr
+    if epoch >= 20:
+        initial_lr = 0.04
+    if epoch >40:
+        initial_lr = 0.01
+    if epoch > 60:
+        initial_lr = 0.008
+    if epoch > 80:
+        initial_lr = 0.001
+    if epoch > 100:
+        initial_lr = 0.0004
+    if epoch > 120:
+        initial_lr = 0.0001
+    if epoch > 140:
+        initial_lr = 0.00004
+    if epoch > 160:
+        initial_lr = 0.00001
+    if epoch > 180:
+        initial_lr = 0.000008
     return initial_lr
 
 

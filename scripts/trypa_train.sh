@@ -11,7 +11,7 @@ python main.py \
         --train_loss_idea='loss_idea2'	\
         --temp_scale_idea='temp_scale_default'	\
 	--lr=0.01 	\
-	--lr_scheduler='mtd2'     \
+	--lr_scheduler='mtd4'     \
 	--batch_size=128   \
 	--net_type=vgg16	\
 	--dropout=0	\
