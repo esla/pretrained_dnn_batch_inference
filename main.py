@@ -575,8 +575,8 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             saved_model_curr_best = save_point + file_name + '-epoch-' + str(epoch) + '.pth'
             print("Saving model: {}".format(saved_model_curr_best))
             torch.save(state, saved_model_curr_best)
-            print("Saving model: {}".format(saved_model_overall_best))
-            torch.save(state, saved_model_overall_best)
+            #print("Saving model: {}".format(saved_model_overall_best))
+            #torch.save(state, saved_model_overall_best)
             val_csv_file = save_point + file_name + '-epoch-' + str(epoch) + '-' + suffix + '.csv'
             print("saving validation results: {}".format(val_csv_file))
             df.to_csv(val_csv_file)
