@@ -174,7 +174,7 @@ def decompose_loss(logits, targets, predictions):
     loss_incorrectly_preds = criterion(incorrect_outputs, get_target_in_appropriate_format(args,
                                                                                            targets_for_incorrect.cuda(),
                                                                                            num_classes))
-    return loss_correctly_preds, loss_incorrectly_preds
+    return loss_correctly_preds, loss_incorrectly_preds, correct_outputs, incorrect_outputs
 
 
 # Return network and file name
@@ -375,17 +375,21 @@ def train_model(net, epoch, args):
 
         #print("outputs1: ", outputs)
         # esla temporarily commented out to test experimental idea below
-        #loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
+        loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
 
         # esla Experimental Idea: updating loss based on NLL for the incorrectly classified for every batch
-        loss_corr, loss_incorr = decompose_loss(outputs, targets, predicted)
-
-        threshold = 1.2
-
-        if (loss_incorr / loss_corr) > threshold:
-            loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
-        else:
-            loss = loss_incorr
+        # loss_corr, loss_incorr, _, _ = decompose_loss(outputs, targets, predicted)
+        #
+        # threshold = 1.2
+        #
+        # if (loss_incorr / loss_corr) > threshold:
+        #     loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
+        # else:
+        #     loss = loss_incorr
+        #
+        # if math.isnan(loss):
+        #     print("\nIgnoring nan loss")
+        #     continue
 
         loss.backward()  # Backward Propagation
         optimizer.step()  # Optimizer update
@@ -498,7 +502,7 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     #                                                                                        targets_for_incorrect.cuda(),
     #                                                                                        num_classes))
 
-    loss_correctly_preds, loss_incorrectly_preds = decompose_loss(all_logits, all_targets, all_preds)
+    loss_correctly_preds, loss_incorrectly_preds, _, _ = decompose_loss(all_logits, all_targets, all_preds)
 
     accuracy = get_topk_accuracy(all_logits, all_targets)[0].item()
 
@@ -745,7 +749,7 @@ if __name__ == '__main__':
             #transforms.ToPILImage(),
             #transforms.Grayscale(num_output_channels=3),
             #transforms.Resize(augs.size),
-            transforms.RandomResizedCrop(augs.size, scale=(0.08, 0.5)),
+            transforms.RandomResizedCrop(augs.size, scale=(0.8, 1.0)),
             torchvision.transforms.ColorJitter(hue=.05, saturation=.05),            
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -880,6 +884,7 @@ if __name__ == '__main__':
     
     # get the appropriate loss criterion for training
     #if not args.inference_only:
+    
     criterion = get_loss_criterion(args)
 
     if args.inference_only:
@@ -997,6 +1002,8 @@ if __name__ == '__main__':
         
         # idea: update the gamma in a focal loss (Experimental)
         print('esla debug1')
+        # temporarily hard code alpha
+        alpha = 0.018
         if args.train_loss_idea == 'ce':
             gamma = 0.0
         elif args.train_loss_idea == 'loss_idea1':
@@ -1011,7 +1018,7 @@ if __name__ == '__main__':
             sys.exit('Error!, Choose a valid training loss idea')
         print('esla debug2')
 
-        criterion = get_loss_criterion(args, gamma=gamma)
+        criterion = get_loss_criterion(args, gamma=gamma, alpha=alpha)
 
         # write results
         filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_log.csv"
