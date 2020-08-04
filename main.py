@@ -1005,8 +1005,10 @@ if __name__ == '__main__':
         #print('esla debug1')
         # temporarily hard code alpha
         #alpha = 0.018
-        if args.alpha:
+        if args.alpha is not None:
             alpha = args.alpha + (val_metrics['balanced_accuracy'] - 50.0) / 1000  # focal loss improvement idea 1
+        else:
+            alpha = None
 
         if args.train_loss_idea == 'ce':
             gamma = 0.0
@@ -1020,7 +1022,11 @@ if __name__ == '__main__':
             gamma = val_metrics['test_loss_incorrects'] + 10*val_metrics['ece_pos_gap'] # loss idea 4
         else:
             sys.exit('Error!, Choose a valid training loss idea')
-        print("alpha: ", alpha)
+
+        if args.alpha is None:
+            print("alpha: ", args.alpha)
+        else:
+            print("alpha: ", alpha)
         print("gamma:, ", gamma)
 
         criterion = get_loss_criterion(args, gamma=gamma, alpha=alpha)
