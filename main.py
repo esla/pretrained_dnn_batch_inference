@@ -45,7 +45,8 @@ from experimental_dl_codes.from_kaggle_post_focal_loss import FocalLoss as Focal
 from experimental_dl_codes.focal_loss2 import FocalLoss as FocalLoss2
 from experimental_dl_codes.ohem import NllOhem
 from experimental_dl_codes.focal_loss3 import FocalLoss as FocalLoss3
-from experimental_dl_codes.other_transforms import ClaheTransform
+from experimental_dl_codes.other_transforms import ClaheTransform, RandomZeroPaddedSquareResizeTransform
+
 
 from torch_lr_finder import LRFinder
 
@@ -746,20 +747,45 @@ if __name__ == '__main__':
 
     data_transforms4 = {
         'train': transforms.Compose([
-            #ClaheTransform(),
-            #transforms.ToPILImage(),
-            #transforms.Grayscale(num_output_channels=3),
-            #transforms.Resize(augs.size),
+            # ClaheTransform(),
+            # transforms.ToPILImage(),
+            # transforms.Grayscale(num_output_channels=3),
+            # transforms.Resize(augs.size),
             transforms.RandomResizedCrop(augs.size, scale=(0.8, 1.0)),
-            torchvision.transforms.ColorJitter(hue=.05, saturation=.05),            
+            torchvision.transforms.ColorJitter(hue=.05, saturation=.05),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(augs.mean, augs.std)
         ]),
         'val': transforms.Compose([
             transforms.Grayscale(num_output_channels=3),
-            #ClaheTransform(),
-            #transforms.ToPILImage(),
+            # ClaheTransform(),
+            # transforms.ToPILImage(),
+            transforms.Resize(augs.size),
+            transforms.CenterCrop(augs.size),
+            transforms.ToTensor(),
+            transforms.Normalize(augs.mean, augs.std)
+        ]),
+    }
+
+    data_transforms5 = {
+        'train': transforms.Compose([
+            ClaheTransform(),
+            transforms.ToPILImage(),
+            torchvision.transforms.ColorJitter(hue=.05, saturation=.05),
+            # transforms.Grayscale(num_output_channels=3),
+            # transforms.Resize(augs.size),
+            RandomZeroPaddedSquareResizeTransform(square_crop_size=224), # my augmentation idea 1
+            # transforms.RandomResizedCrop(augs.size, scale=(0.8, 1.0)),
+            # transforms.ColorJitter(brightness=(0.2, 3)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(augs.mean, augs.std)
+        ]),
+        'val': transforms.Compose([
+            transforms.Grayscale(num_output_channels=3),
+            # ClaheTransform(),
+            # transforms.ToPILImage(),
             transforms.Resize(augs.size),
             transforms.CenterCrop(augs.size),
             transforms.ToTensor(),

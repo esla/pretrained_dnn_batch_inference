@@ -44,3 +44,33 @@ class ClaheTransform:
         #cv2.imshow("test", final_bgr_img)
         #cv2.waitKey(0)
         return final_bgr_img
+
+
+class RandomZeroPaddedSquareResizeTransform:
+    def __init__(self, square_crop_size):
+        self.square_crop_size = square_crop_size
+
+    def __call__(self, im):
+        old_size = im.size  # old_size[0] is in (width, height) format
+
+        ratio = float(self.square_crop_size) / max(old_size)
+        new_size = tuple([int(x * ratio) for x in old_size])
+        # use thumbnail() or resize() method to resize the input image
+
+        # thumbnail is a in-place operation
+
+        # im.thumbnail(new_size, Image.ANTIALIAS)
+
+        im = im.resize(new_size, Image.ANTIALIAS)
+        # create a new image and paste the resized on it
+
+        new_im = Image.new("RGB", (self.square_crop_size, self.square_crop_size))
+        rand_x = randint(0, self.square_crop_size - new_size[0])
+        rand_y = randint(0, self.square_crop_size - new_size[1])
+        #print("rand_x: {} rand_y {}".format(rand_x, rand_y))
+        # new_im.paste(im, ((desired_size - new_size[0]) // 2, (desired_size - new_size[1]) // 2))
+        new_im.paste(im, (rand_x, rand_y))
+        #print("Image object: ", type(new_im))
+
+        #new_im.show()
+        return new_im
