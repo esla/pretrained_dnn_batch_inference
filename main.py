@@ -1012,9 +1012,9 @@ if __name__ == '__main__':
         elif args.train_loss_idea == 'loss_idea2':
             gamma = val_metrics['test_loss_incorrects']  # loss idea 2
         elif args.train_loss_idea == 'loss_idea3':
-            gamma = val_metrics['test_loss_incorrects'] + val_metrics['ece_total'] # loss idea 3
+            gamma = val_metrics['test_loss_incorrects'] + 10*val_metrics['ece_total'] # loss idea 3
         elif args.train_loss_idea == 'loss_idea4':
-            gamma = val_metrics['test_loss_incorrects'] + val_metrics['ece_pos_gap'] # loss idea 4
+            gamma = val_metrics['test_loss_incorrects'] + 10*val_metrics['ece_pos_gap'] # loss idea 4
         else:
             sys.exit('Error!, Choose a valid training loss idea')
         print('esla debug2')
