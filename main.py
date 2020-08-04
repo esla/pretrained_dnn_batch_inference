@@ -421,7 +421,8 @@ def train_model(net, epoch, args):
     return metrics
 
 def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
-    global best_accuracy, best_acc_ace, logits, true_labels, pred_labels
+    #global best_accuracy, best_acc_ace, logits, true_labels, pred_labels
+    global best_accuracy, best_balanced_accuracy, best_acc_ace, logits, true_labels, pred_labels
     net.eval()
     net.training = False
     test_loss = 0
@@ -556,10 +557,14 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
               (accuracy, balanced_accuracy, ece_results['ece_total'], auc))
 
     if is_validation_mode:
-        if accuracy > best_accuracy  or accuracy  - metrics['test_loss_incorrects'] > best_acc_ace:  # stopping criteria idea 2
+        #if accuracy > best_accuracy  or accuracy  - metrics['test_loss_incorrects'] > best_acc_ace:  # stopping criteria idea 2
+        if (balanced_accuracy > best_balanced_accuracy or accuracy > best_accuracy or accuracy -
+                metrics['test_loss_incorrects'] > best_acc_ace):  # stopping criteria idea 2
 
             if accuracy > best_accuracy:
                 suffix = 'val_acc'
+            elif balanced_accuracy > best_balanced_accuracy:
+                suffix = 'bal_acc'
             else:
                 suffix = 'val_acc_incorr_nll'
 
@@ -589,6 +594,7 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             best_accuracy = accuracy  # default stopping criteria idea
             # best_accuracy = (accuracy/100) - metrics['ece_total']  # stopping criteria idea 1
             best_acc_ace = accuracy - metrics['test_loss_incorrects']  # stopping criteria idea 2
+            best_balanced_accuracy = balanced_accuracy
 
     return df, logits, true_labels, pred_labels, metrics
 
@@ -674,6 +680,7 @@ if __name__ == '__main__':
     use_cuda = torch.cuda.is_available()
     best_acc = 0
     best_accuracy = 0
+    best_balanced_accuracy = 0
     #start_epoch, num_epochs, batch_size, optim_type = cf.start_epoch, cf.num_epochs, cf.batch_size, cf.optim_type
     start_epoch, num_epochs, optim_type = cf.start_epoch, cf.num_epochs, cf.optim_type
 
@@ -808,6 +815,9 @@ if __name__ == '__main__':
     elif args.data_transform == 'data_transform4':
         train_transform = data_transforms4['train']
         val_transform = data_transforms3['val']
+    elif args.data_transform == 'data_transform5':
+        train_transform = data_transforms5['train']
+        val_transform = data_transforms5['val']
     else:
         sys.exit("Error! Please provide the appropriate transform")
 
