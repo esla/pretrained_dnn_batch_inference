@@ -84,23 +84,23 @@ def get_one_hot_embedding(labels, num_classes):
 
 
 def get_target_in_appropriate_format(args, targets, num_classes):
-    if args.learning_type in ['multi_class', 'focal_loss']:
+    if args.learning_type in ['multi_class', 'focal_loss_target']:
         return targets
-    elif args.learning_type == 'multi_label':
+    elif args.learning_type in ['multi_label', 'focal_loss_ohe']:
         return get_one_hot_embedding(targets, num_classes)
     else:
         sys.exit("Unknown learning task type")
 
 
-def get_loss_criterion(args, gamma=0, alpha=None):
+def get_loss_criterion(args, gamma, alpha):
     global criterion
     # Loss functions
     if args.learning_type == 'multi_class':
         criterion = nn.CrossEntropyLoss()
     elif args.learning_type == 'multi_label':
         criterion = nn.BCEWithLogitsLoss()
-    elif args.learning_type =='focal_loss':
-        criterion = FocalLoss2(gamma=gamma, alpha=alpha)
+    elif args.learning_type in ['focal_loss_target', 'focal_loss_ohe']:
+        criterion = FocalLoss2(alpha=alpha, gamma=gamma)
     else:
         sys.exit('Unknown loss function type')
     return criterion
@@ -623,6 +623,7 @@ if __name__ == '__main__':
     training_group.add_argument('--estimate_lr', '-lre',action='store_true', help='Use LR Finder to get rough estimate of start lr')
     training_group.add_argument('--resume_from_model', '-rm', help='Model to load to resume training from')
     training_group.add_argument('--lr', default=0.001, type=float, help='learning_rate')
+    training_group.add_argument('--alpha', '-a', default=None, type=float, help='alpha value for focal loss')
     training_group.add_argument('--lr_scheduler', type=str, help='Select the LR scheduler')
     training_group.add_argument('--batch_size', default=32, type=int, help='training batch size')
     training_group.add_argument('--net_type', default='wide-resnet', type=str, help='model')
@@ -885,7 +886,7 @@ if __name__ == '__main__':
     # get the appropriate loss criterion for training
     #if not args.inference_only:
     
-    criterion = get_loss_criterion(args)
+    criterion = get_loss_criterion(args, gamma=0, alpha=args.alpha)
 
     if args.inference_only:
         print('\n[Inference Phase] : Model setup')
@@ -959,7 +960,7 @@ if __name__ == '__main__':
         cudnn.benchmark = True
 
     # get the appropriate loss criterion for training
-    #criterion = get_loss_criterion(args)
+    #criterion = get_loss_criterion(args, gamma=0, alpha=args.alpha)
 
 
     print('\n[Phase 3] : Training model')

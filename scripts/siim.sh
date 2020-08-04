@@ -3,9 +3,9 @@
 #sleep 2h;
 
 python main.py \
-	--learning_type='focal_loss'	\
+	--learning_type='focal_loss_target'	\
 	--input_image_size=224   \
-	--datasets_class_folders_root_dir=/home/esla/research/datasets/siim/exp_datasets/base_dataset  	\
+	--datasets_class_folders_root_dir=/home/esla/research/datasets/siim/exp_datasets/cropped_from_1024/dataset_seed1337  	\
         --dataset_class_type='class_folders'	\
         --data_transform='data_transform4'	\
         --train_loss_idea='loss_idea2'	\
