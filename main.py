@@ -33,6 +33,7 @@ from auglib.dataset_loader import CSVDataset, CSVDatasetWithName
 from keras.utils.np_utils import to_categorical
 from calibration.temp_api import get_adaptive_ece
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score
+from sklearn.metrics import classification_report, confusion_matrix
 
 import numpy as np
 
@@ -585,6 +586,17 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     metrics['ece_total'] = ece_results['ece_total']
     metrics['ece_pos_gap'] = ece_results['ece_pos_gap']
     metrics['ece_neg_gap'] = ece_results['ece_neg_gap']
+
+    # Accuracy per class
+    cm = confusion_matrix(true_labels, pred_labels)
+    cm = cm.astype('float') / cm.sum(axis=1)[:,np.newaxis]
+    print("\nclass accuracies", cm.diagonal())
+    print("\n\n")
+
+    # Print validation report
+    val_report = classification_report(true_labels, pred_labels, target_names=['benign', 'malignant'])
+    #print("type for val_report", type(val_report))
+    print(val_report)
     
     if is_validation_mode:
         print("\n| Validation Epoch #%d\t| Loss: %.4f | Corr Loss: %.4f | Incorr Loss: %.4f | Acc@1: %.2f%% | BalAcc@1: %.2f%% "
@@ -950,13 +962,13 @@ if __name__ == '__main__':
     if not os.path.isdir('checkpoint'):
         os.mkdir('checkpoint')
 
-    if not os.path.isdir('checkpoint/' + experiment_dir):
+    if not os.path.isdir('checkpoint/' + experiment_dir) and is_training:
         #os.mkdir('checkpoint/' + experiment_dir)
         os.makedirs("checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/")
 
-    exp_conf_file = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_setting.txt"
-    with open(exp_conf_file, 'a+') as f:
-        f.write('\n'.join(sys.argv[1:]))
+        exp_conf_file = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_setting.txt"
+        with open(exp_conf_file, 'a+') as f:
+            f.write('\n'.join(sys.argv[1:]))
     
     # get the appropriate loss criterion for training
     #if not args.inference_only:
@@ -988,6 +1000,7 @@ if __name__ == '__main__':
         # write results
         dataset_category = 'inference'
         experiment_dir = result_filename
+<<<<<<< HEAD
         os.makedirs("inference_results" + "/" + experiment_dir)
         if args.validate_train_dataset:
             # filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference_train_dataset.csv"
@@ -998,6 +1011,17 @@ if __name__ == '__main__':
             filename = "inference_results" + "/" + experiment_dir + "/" + "inference.csv"
             # filename = "/inference_results/" + result_filename+ ".csv"
             # prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
+=======
+        os.makedirs("inference_results" + "/" + experiment_dir )
+        if args.validate_train_dataset:
+            #filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference_train_dataset.csv"
+            filename = "checkpoint" + "/" + experiment_dir + "/" + "inference_train_dataset.csv"
+            prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name + 'validated_train_dataset'
+        else:
+            filename = "inference_results" + "/" + experiment_dir + "/" + "inference.csv"
+            #filename = "/inference_results/" + result_filename+ ".csv"
+            #prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
+>>>>>>> 23859e2c8a745309e6ae52b965b76fcdf57601c7
             prefix_result_file = experiment_dir
             print("On {}".format(filename))
         with open(filename, 'a+') as infile:
