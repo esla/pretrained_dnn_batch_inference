@@ -911,13 +911,13 @@ if __name__ == '__main__':
     if not os.path.isdir('checkpoint'):
         os.mkdir('checkpoint')
 
-    if not os.path.isdir('checkpoint/' + experiment_dir):
+    if not os.path.isdir('checkpoint/' + experiment_dir) and is_training:
         #os.mkdir('checkpoint/' + experiment_dir)
         os.makedirs("checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/")
 
-    exp_conf_file = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_setting.txt"
-    with open(exp_conf_file, 'a+') as f:
-        f.write('\n'.join(sys.argv[1:]))
+        exp_conf_file = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_setting.txt"
+        with open(exp_conf_file, 'a+') as f:
+            f.write('\n'.join(sys.argv[1:]))
     
     # get the appropriate loss criterion for training
     #if not args.inference_only:
@@ -930,6 +930,7 @@ if __name__ == '__main__':
         assert os.path.exists(checkpoint_file) and os.path.isfile(
             checkpoint_file), 'Error: No checkpoint directory found!'
         net_name = os.path.basename(checkpoint_file)
+        result_filename = os.path.dirname(checkpoint_file).split('/')[-1] + '_' + net_name
         checkpoint = torch.load(checkpoint_file)
         net = checkpoint['model']
 
@@ -946,12 +947,18 @@ if __name__ == '__main__':
 
         # write results
         dataset_category = 'inference'
+        experiment_dir = result_filename
+        os.makedirs("inference_results" + "/" + experiment_dir )
         if args.validate_train_dataset:
-            filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference_train_dataset.csv"
+            #filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference_train_dataset.csv"
+            filename = "checkpoint" + "/" + experiment_dir + "/" + "inference_train_dataset.csv"
             prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name + 'validated_train_dataset'
         else:
-            filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + args.inference_filename
-            prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
+            filename = "inference_results" + "/" + experiment_dir + "/" + "inference.csv"
+            #filename = "/inference_results/" + result_filename+ ".csv"
+            #prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
+            prefix_result_file = experiment_dir
+            print("On {}".format(filename))
         with open(filename, 'a+') as infile:
             csv_writer = csv.writer(infile, dialect='excel')
             csv_writer.writerow(list(metrics.values()))

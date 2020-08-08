@@ -6,6 +6,7 @@ __pycache__/
 # C extensions
 *.so
 
+inference_results/
 # Distribution / packaging
 .Python
 inference_results/
