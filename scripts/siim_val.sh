@@ -17,6 +17,6 @@ python main.py \
 	--net_type=resnext50_32x4d	\
 	--dropout=0	\
 	--dataset=siim	\
-	--resume_from_model=''  \
-	--inference_model=''	\
+        --inference_only		\
+	--inference_model='/home/esla/Documents/DStorage/siim-checkpoint-bak/23-Jul-2020-08_53_56.533918-resnext50_32x4d-siim-224-85/resnext50_32x4d-epoch-400.pth'	\
 	--inference_dataset_dir=''	\

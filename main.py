@@ -252,7 +252,46 @@ def get_network_224(args, num_classes):
     return net, file_name
 
 
+def get_efficientnet_network(args, num_classes, pre_trained):
+    """
+
+    :param model_name: an example is 'efficientnet-b5'
+    :return:
+    """
+    efficientnet_models = {
+        'efficientnet-b0': 224,
+        'efficientnet-b1': 240,
+        'efficientnet-b2': 260,
+        'efficientnet-b3': 300,
+        'efficientnet-b4': 340,
+        'efficientnet-b5': 456,
+        'efficientnet-b6': 528,
+        'efficientnet-b7': 600,
+        'efficientnet-b8': 672
+    }
+    model_name = args.net_type
+    file_name = args.net_type
+    assert model_name in efficientnet_models.keys(), "EfficientNet model name is invalid!"
+    assert args.input_image_size in efficientnet_models.values(), "Input_image_size is in-valid!"
+    if not pre_trained:
+        net = EfficientNet.from_name(model_name)
+        net._fc = nn.Linear(in_features=net._fc.in_features, out_features=num_classes, bias=True)
+    else:
+        net = EfficientNet.from_pretrained(model_name)
+        net._fc = nn.Linear(in_features=net._fc.in_features, out_features=num_classes, bias=True)
+
+    required_input_image_size = EfficientNet.get_image_size(model_name)
+    assert required_input_image_size == args.input_image_size, "input_image_size must matched model's required input size"
+    return net, file_name
+
+
 def get_network(args, num_classes):
+    # generate list for efficientnet models
+    efficientnet_model_names = ["efficientnet-b" + str(i) for i in range(9)]
+
+    if args.net_type in efficientnet_model_names:
+        return get_efficientnet_network(args, num_classes, pre_trained=False)
+
     if args.input_image_size == 32:
         return get_network_32(args, num_classes)
     elif args.input_image_size == 224:
@@ -780,10 +819,10 @@ if __name__ == '__main__':
             ClaheTransform(),
             transforms.ToPILImage(),
             torchvision.transforms.ColorJitter(hue=.05, saturation=.05),
-            # transforms.Grayscale(num_output_channels=3),
+            transforms.Grayscale(num_output_channels=3),
             # transforms.Resize(augs.size),
             RandomZeroPaddedSquareResizeTransform(square_crop_size=224), # my augmentation idea 1
-            # transforms.RandomResizedCrop(augs.size, scale=(0.8, 1.0)),
+            transforms.RandomResizedCrop(augs.size, scale=(0.55, 1.0)),
             # transforms.ColorJitter(brightness=(0.2, 3)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -791,8 +830,8 @@ if __name__ == '__main__':
         ]),
         'val': transforms.Compose([
             transforms.Grayscale(num_output_channels=3),
-            # ClaheTransform(),
-            # transforms.ToPILImage(),
+            ClaheTransform(),
+            transforms.ToPILImage(),
             transforms.Resize(augs.size),
             transforms.CenterCrop(augs.size),
             transforms.ToTensor(),
@@ -930,6 +969,7 @@ if __name__ == '__main__':
         assert os.path.exists(checkpoint_file) and os.path.isfile(
             checkpoint_file), 'Error: No checkpoint directory found!'
         net_name = os.path.basename(checkpoint_file)
+        result_filename = os.path.dirname(checkpoint_file).split('/')[-1] + '_' + net_name
         checkpoint = torch.load(checkpoint_file)
         net = checkpoint['model']
 
@@ -940,26 +980,34 @@ if __name__ == '__main__':
 
         print('\n=> Inference in Progress')
         if args.validate_train_dataset:
-            all_results_df, logits, true_labels, pred_labels, metrics = test_model(net, inference_loader, is_validation_mode=True)
+            all_results_df, logits, true_labels, pred_labels, metrics = test_model(net, inference_loader,
+                                                                                   is_validation_mode=True)
         else:
             all_results_df, logits, true_labels, pred_labels, metrics = test_model(net, inference_loader)
 
         # write results
         dataset_category = 'inference'
+        experiment_dir = result_filename
+        os.makedirs("inference_results" + "/" + experiment_dir)
         if args.validate_train_dataset:
-            filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference_train_dataset.csv"
-            prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name + 'validated_train_dataset'
+            # filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference_train_dataset.csv"
+            filename = "checkpoint" + "/" + experiment_dir + "/" + "inference_train_dataset.csv"
+            prefix_result_file = args.dataset + "-" + str(
+                args.input_image_size) + '_' + dataset_category + '_' + net_name + 'validated_train_dataset'
         else:
-            filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + args.inference_filename
-            prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
+            filename = "inference_results" + "/" + experiment_dir + "/" + "inference.csv"
+            # filename = "/inference_results/" + result_filename+ ".csv"
+            # prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
+            prefix_result_file = experiment_dir
+            print("On {}".format(filename))
         with open(filename, 'a+') as infile:
             csv_writer = csv.writer(infile, dialect='excel')
             csv_writer.writerow(list(metrics.values()))
 
         # Save results to files
-        #dataset_category = 'inference'
-        #prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
-        #all_results_df.to_csv(prefix_result_file + ".csv")
+        # dataset_category = 'inference'
+        # prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
+        # all_results_df.to_csv(prefix_result_file + ".csv")
         all_results_df.to_csv(filename)
 
         if args.validate_train_dataset:

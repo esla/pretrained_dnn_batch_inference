@@ -18,4 +18,4 @@ python main.py \
 	--dropout=0	\
 	--dataset=siim	\
 	--inference_model=/media/esla/DataDrive/ghent_phd_research/git-repos-igc/image-classification-pytorch/checkpoint/07-Aug-2020-01_31_18.473009-resnext50_32x4d-siim-224/resnext50_32x4d-epoch-99.pth	\
-	--inference_dataset_dir=/media/esla/DStorage/DataSets/siim_resized/1024/test	\
+	--inference_dataset_dir=/home/esla/research/datasets/siim/jpeg/test_resized/test_orig_1024	\
