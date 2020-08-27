@@ -433,7 +433,7 @@ def perform_temperature_scaling(outputs):
     return outputs, T, Tmax
 
 
-def train_model(net, epoch, args):
+def train_model(net, optimizer, epoch, args):
     global last_saved_lr, load_from_last_best, current_lr
     net.train()
     net.training = True
@@ -446,7 +446,6 @@ def train_model(net, epoch, args):
     # metrics
     metrics = {}
 
-    optimizer = optim.SGD(net.parameters(), lr=get_learning_rate(args, epoch), momentum=0, weight_decay=5e-4)
 
     # optimizer = optim.Adam(net.parameters(), lr=cf.learning_rate(lr, epoch))
 
@@ -608,13 +607,19 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     # Accuracy per class
     cm = confusion_matrix(true_labels, pred_labels)
     cm = cm.astype('float') / cm.sum(axis=1)[:,np.newaxis]
-    print("\nclass accuracies", cm.diagonal())
-    print("\n\n")
+    print("\nclass accuracies")
+    #print("\n\n")
+    acc_per_class_vals = cm.diagonal()
+    acc_per_class = {}
+    for i, class_name in  enumerate(train_set.class_to_idx.keys()):
+        acc_per_class[class_name] = 100.0 * round(acc_per_class_vals[i], 2)
+    print(acc_per_class)
+        
 
     # Print validation report
-    val_report = classification_report(true_labels, pred_labels, target_names=['benign', 'malignant'])
+    #val_report = classification_report(true_labels, pred_labels, target_names=train_set.class_to_idx.keys())
     #print("type for val_report", type(val_report))
-    print(val_report)
+    #print(val_report)
     
     if is_validation_mode:
         loss = test_loss / batch_idx
@@ -624,7 +629,9 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
         ece_pos = ece_results['ece_pos_gap']
         ece_neg = ece_results['ece_neg_gap']
 
-        print(f"\n| Val. Epoch #{epoch}")
+        print('-'*60)
+        print(f"| Val. Epoch #{epoch}")
+        print('-' * 60)
         print(f"| Loss: {loss:.4f}  |  Corr Loss: {loss_corr:.4f}  |  Incorr Loss: {loss_incorr:.4f}")
         print(f"| Acc: {accuracy:.2f} | Bal. Acc: {balanced_accuracy:.2f} | AUC: {auc:.2f} |")
         print(f"| ECE Total: {ece_total:.4f}  |  ECE Pos: {ece_pos:.4f}  |  ECE Neg: {ece_neg:.4f}\n")
@@ -645,7 +652,7 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             else:
                 suffix = 'val_acc_incorr_nll'
 
-            print('| Saving Best model...\t\t\tTop1 = %.2f%%' % accuracy)
+            print('| Saving Best model and results...\t\t\tTop1 = %.2f%%' % accuracy)
             state = {
                 'whole_model': net,
                 'model': net.module if use_cuda else net,
@@ -659,12 +666,12 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
 
             #saved_model_overall_best = save_point + file_name + '.pth'
             saved_model_curr_best = save_point + file_name + '-epoch-' + str(epoch) + '.pth'
-            print("Saving model: {}".format(saved_model_curr_best))
+            #print("Saving model: {}".format(saved_model_curr_best))
             torch.save(state, saved_model_curr_best)
             #print("Saving model: {}".format(saved_model_overall_best))
             #torch.save(state, saved_model_overall_best)
             val_csv_file = save_point + file_name + '-epoch-' + str(epoch) + '-' + suffix + '.csv'
-            print("saving validation results: {}".format(val_csv_file))
+            #print("saving validation results: {}".format(val_csv_file))
             df.to_csv(val_csv_file)
 
             best_accuracy = accuracy  # default stopping criteria idea
@@ -707,7 +714,6 @@ if __name__ == '__main__':
     # task type arguments
     task_selection_group.add_argument('--learning_type', default='multi-class', type=str, help=""" to select the kind of
                                                                                                learning""")
-
     # dataset parameters group arguments
     dataset_params_group.add_argument('--input_image_size', type=int, help='input image size for the network')
     dataset_params_group.add_argument('--dataset_class_type', '-dct', help='The class type for the dataset')
@@ -727,6 +733,7 @@ if __name__ == '__main__':
     training_group.add_argument('--resume_from_model', '-rm', help='Model to load to resume training from')
     training_group.add_argument('--lr', default=0.001, type=float, help='learning_rate')
     training_group.add_argument('--alpha', '-a', default=None, type=str, help='alpha value for focal loss')
+    training_group.add_argument('--lr_scheduling_mtd', type=str, help='choose the lr scheduling mechanism')
     training_group.add_argument('--lr_scheduler', type=str, help='Select the LR scheduler')
     training_group.add_argument('--batch_size', default=32, type=int, help='training batch size')
     training_group.add_argument('--net_type', default='wide-resnet', type=str, help='model')
@@ -974,10 +981,10 @@ if __name__ == '__main__':
 
         # Get the data loaders for training
         num_classes = len(train_set.class_to_idx)
-        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, num_workers=8,
-                                                   sampler=ImbalancedDatasetSampler(train_set))
-        #train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=False,
-        #                                               num_workers=4)
+        #train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, num_workers=8,
+        #                                           sampler=ImbalancedDatasetSampler(train_set))
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=False,
+                                                       num_workers=4)
         val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=8)
 
     elif is_inference:
@@ -1020,6 +1027,7 @@ if __name__ == '__main__':
             f.write('\n'.join(sys.argv[1:]))
     
     criterion = get_loss_criterion(args, gamma=0, alpha=eval(args.alpha))
+
 
     if args.inference_only:
         print('\n[Inference Phase] : Model setup')
@@ -1105,6 +1113,11 @@ if __name__ == '__main__':
     # get the appropriate loss criterion for training
     #criterion = get_loss_criterion(args, gamma=0, alpha=args.alpha)
 
+    steps = 10
+    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0, weight_decay=5e-4)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, steps)
+
+
     print('\n[Phase 3] : Training model')
     print('| Training Epochs = ' + str(num_epochs))
     print('| Initial Learning Rate = ' + str(args.lr))
@@ -1116,7 +1129,7 @@ if __name__ == '__main__':
         start_time = time.time()
 
         # perform one epoch of training
-        train_metrics = train_model(net, epoch, args)
+        train_metrics = train_model(net, optimizer, epoch, args)
 
         # validate_model(net, epoch)
         df, logits, true_labels, pred_labels, val_metrics = test_model(net, val_loader, epoch, is_validation_mode=True)
@@ -1124,9 +1137,14 @@ if __name__ == '__main__':
         alpha, gamma = get_focal_loss_parameters()
 
         print(f"\n Next alpha value: {alpha}")
-        print(f" Next gamma value: {gamma}")
+        print(f" Next gamma value: {gamma:.4f}")
 
         criterion = get_loss_criterion(args, gamma=gamma, alpha=alpha)
+
+        if args.lr_scheduling_mtd == 'custom':
+            optimizer = optim.SGD(net.parameters(), lr=get_learning_rate(args, epoch), momentum=0, weight_decay=5e-4)
+        else:
+            scheduler.step()
 
         # write results
         filename = os.path.join(save_point, "training_log.csv")
