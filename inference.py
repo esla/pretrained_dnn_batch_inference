@@ -6,6 +6,8 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 
+from ast import literal_eval
+
 import torch
 import torchvision
 import torchvision.transforms as transforms
@@ -91,10 +93,41 @@ def test_model(net, dataset_loader):
     return df, logits, true_labels, pred_labels
 
 
+def prepare_siim_submission(results_csv, submission_filenane, preprocess_image_names_func=None):
+    df = pd.read_csv(results_csv)
+    df_submission = pd.DataFrame()
+    if preprocess_image_names_func:
+        df['ImageNames'] = df['ImageNames'].apply(preprocess_image_names_func)
+    df_submission['image_name'] = df['ImageNames']
+    df.SoftmaxValues = df.SoftmaxValues.apply(literal_eval)
+    df_softmax_values = pd.DataFrame(df['SoftmaxValues'].to_list(), columns=['pred_benign', 'pred_malignant'])
+    df_submission['target'] = df_softmax_values['pred_malignant']
+    df_submission.to_csv(submission_filenane, index=False)
+
+
+def prepare_siim_submission_df(results_df, submission_filenane, preprocess_image_names_func=None):
+    #df = pd.read_csv(results_csv)
+    df = results_df
+    df_submission = pd.DataFrame() 
+    # To be used only when original label names were changed
+    if preprocess_image_names_func:
+        df['ImageNames'] = df['ImageNames'].apply(extract_approp_name)
+    df_submission['image_name'] = df['ImageNames']
+    df.SoftmaxValues = df.SoftmaxValues.apply(literal_eval)
+    df_softmax_values = pd.DataFrame(df['SoftmaxValues'].to_list(), columns=['pred_benign', 'pred_malignant'])
+    df_submission['target'] = df_softmax_values['pred_malignant']
+    df_submission.to_csv(submission_filenane, index=False)
+
+
+def extract_approp_name(col_elem):
+    name = os.path.basename(col_elem).split('.')[0]
+    return name
+
+
 if __name__ == "__main__":
 
     # Temporary hardcoded
-    batch_size = 32
+    batch_size = 128
     use_cuda = torch.cuda.is_available()
     experiment_dir = datetime.now().strftime("%d-%b-%Y-%H_%M_%S.%f")
 
@@ -185,11 +218,13 @@ if __name__ == "__main__":
     # Save results to files
     # dataset_category = 'inference'
     # prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
-    all_results_df.to_csv(prefix_result_file + ".csv")
+    all_results_df.to_csv(prefix_result_file + "_all_results.csv")
     #all_results_df.to_csv(filename)
 
     # if args.validate_train_dataset:
     #     with open(prefix_result_file + '.logits', 'wb') as f:
     #         pickle.dump((true_labels, pred_labels, logits), f)
+
+    prepare_siim_submission(prefix_result_file + "_all_results.csv", prefix_result_file + '_submission.csv')
 
 

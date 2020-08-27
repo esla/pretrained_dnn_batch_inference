@@ -13,10 +13,10 @@ python main.py \
 	--lr=0.8	\
 	--alpha=0.017	\
 	--lr_scheduler='mtd2'     \
-	--batch_size=32   \
+	--batch_size=128   \
 	--net_type=resnext50_32x4d	\
 	--dropout=0	\
 	--dataset=siim	\
         --inference_only		\
-	--inference_model='/home/esla/Documents/DStorage/siim-checkpoint-bak/23-Jul-2020-08_53_56.533918-resnext50_32x4d-siim-224-85/resnext50_32x4d-epoch-400.pth'	\
-	--inference_dataset_dir=''	\
+	--inference_model=$1	\
+	--inference_dataset_dir='/home/esla/research/datasets/siim/exp_datasets/1024_dataset/val'	\

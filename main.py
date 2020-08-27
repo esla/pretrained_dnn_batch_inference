@@ -1,5 +1,8 @@
 from __future__ import print_function
 
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -23,10 +26,14 @@ from networks import *
 from torch.autograd import Variable
 
 import torchvision.models as models
+from efficientnet_pytorch import EfficientNet
+
+from torch.utils.data import WeightedRandomSampler
+from torchsampler import ImbalancedDatasetSampler
 
 
 from auglib.dataset_loader import FolderDatasetWithImgPath
-from auglib.augmentation import Augmentations
+from auglib.augmentation_pytorch.augmentations import Augmentations
 from auglib.dataset_loader import CSVDataset, CSVDatasetWithName
 
 # Metrics
@@ -34,6 +41,8 @@ from keras.utils.np_utils import to_categorical
 from calibration.temp_api import get_adaptive_ece
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score
 from sklearn.metrics import classification_report, confusion_matrix
+
+from collections import Counter
 
 import numpy as np
 
@@ -47,9 +56,6 @@ from experimental_dl_codes.focal_loss2 import FocalLoss as FocalLoss2
 from experimental_dl_codes.ohem import NllOhem
 from experimental_dl_codes.focal_loss3 import FocalLoss as FocalLoss3
 from experimental_dl_codes.other_transforms import ClaheTransform, RandomZeroPaddedSquareResizeTransform
-
-
-from torch_lr_finder import LRFinder
 
 # Config
 import config as cf
@@ -82,6 +88,8 @@ def get_one_hot_embedding(labels, num_classes):
       (tensor) encoded labels, sized [N, #classes].
     """
     y = torch.eye(num_classes)
+    if num_classes == 1:
+        return y.cuda()
     return y[labels].cuda()
 
 
@@ -140,7 +148,7 @@ def get_network_32(args, num_classes):  # To Do: Currently works only for num_cl
         file_name = args.net_type
     # elif args.net_type == 'wide-resnet':
     #     net = Wide_ResNet(args.depth, args.widen_factor, args.dropout, num_classes)
-    #     file_name = 'wide-resnet-' + str(args.depth) + 'x' + str(args.widen_factor)
+    #     file_name = 'wide-resnet-' + str(args.depth) + 'x' + str(args.widen_f/ctor)
     else:
         print('Error : Wrong Network selected for this input size')
         sys.exit(0)
@@ -213,7 +221,7 @@ def get_network_224(args, num_classes):
 
     elif args.net_type == 'resnext50_32x4d':
         file_name = args.net_type
-        net = models.resnext50_32x4d(pretrained=False)
+        net = models.resnext50_32x4d(pretrained=True)
         num_features = net.fc.in_features
         net.fc = nn.Linear(num_features, num_classes)
 
@@ -286,12 +294,43 @@ def get_efficientnet_network(args, num_classes, pre_trained):
     return net, file_name
 
 
+class MelanomaEfficientNet(nn.Module):
+    def __init__(self, model_name='efficientnet-b0', num_classes=2, pool_type=F.adaptive_avg_pool2d):
+        super().__init__()
+        self.pool_type = pool_type
+        self.backbone = EfficientNet.from_pretrained(model_name)
+        in_features = getattr(self.backbone, '_fc').in_features
+        self.classifier = nn.Linear(in_features, num_classes)
+
+    def forward(self, x):
+        features = self.pool_type(self.backbone.extract_features(x), 1)
+        features = features.view(x.size(0),-1)
+        #print(features.shape)
+        return self.classifier(features)
+
+
+#def get_model(model_name='efficientnet-b0', lr=1e-5, wd=0.01, freeze_backbone=False, opt_fn=torch.optim.AdamW,
+#              device=None):
+def get_model(args, num_classes, freeze_backbone=False):
+    #device = device if device else get_device()
+    model = MelanomaEfficientNet(model_name=args.net_type,  num_classes=num_classes)
+    if freeze_backbone:
+        for parameter in model.backbone.parameters():
+            parameter.requires_grad = False
+    #opt = opt_fn(model.parameters(), lr=lr, weight_decay=wd)
+    if use_cuda:
+        #model = model.to(device)
+        model = model.cuda()
+    return model, args.net_type
+
+
 def get_network(args, num_classes):
     # generate list for efficientnet models
     efficientnet_model_names = ["efficientnet-b" + str(i) for i in range(9)]
 
     if args.net_type in efficientnet_model_names:
-        return get_efficientnet_network(args, num_classes, pre_trained=False)
+        #return get_efficientnet_network(args, num_classes, pre_trained=False)
+        return get_model(args, num_classes)
 
     if args.input_image_size == 32:
         return get_network_32(args, num_classes)
@@ -309,9 +348,29 @@ def get_learning_rate(args, epoch):
     elif args.lr_scheduler == 'mtd3':
         return cf.learning_rate_mtd3(args.lr, epoch)
     elif args.lr_scheduler == 'mtd4':
-        return cf.learning_rate_mtd4(args.lr, epoch)
+        return cf.learning_rate_mtd4(args.lr, epoch, 0.1)
+    elif args.lr_scheduler == 'mtd5':
+        return cf.learning_rate_mtd5(args.lr, epoch, 0.1)
     else:
         sys.exit("Error! Unrecognized learing rate scheduler")
+
+
+def get_class_distribution(dataset):
+    dist_count = dict(Counter(dataset.targets))
+    return dist_count
+
+
+def get_class_weights(dataset):
+    target_list = torch.tensor(dataset.targets)
+    target_list = target_list[torch.randperm(len(target_list))]
+
+    class_count = [i for i in get_class_distribution(dataset).values()]
+    class_weights = 1. / torch.tensor(class_count, dtype=torch.float)
+
+    # Assign the weight of each class to all the samples
+    class_weights_all = class_weights[target_list]
+    #print(class_weights_all)
+    return class_weights_all
 
 
 def show_dataloader_images(data_loader, augs, idx, is_save=False, save_dir="./sample_images"):
@@ -345,16 +404,16 @@ def show_images(inp, full_img_name, augs, is_save, title):
 def perform_temperature_scaling(outputs):
     if args.temp_scale_idea == 'temp_scale_default':
         Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
-        #print("Tmax: ", Tmax)
+        # print("Tmax: ", Tmax)
         T = 1
     elif args.temp_scale_idea == 'temp_scale_idea1':
         T = torch.max(torch.FloatTensor.abs(outputs)).item()  # idea2
         Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
-        #print("Tmax: ", Tmax)
+        # print("Tmax: ", Tmax)
     elif args.temp_scale_idea == 'temp_scale_idea2':
         T = torch.max(outputs).item()  # idea2
         Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
-        #print("Tmax: ", Tmax)
+        # print("Tmax: ", Tmax)
     elif args.temp_scale_idea == 'temp_scale_idea3':
         Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()  # idea2
         if Tmax < 4:  # idea 3
@@ -362,11 +421,11 @@ def perform_temperature_scaling(outputs):
         else:
             T = Tmax
         Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
-        #print("Tmax: ", Tmax)
+        # print("Tmax: ", Tmax)
     elif args.temp_scale_idea == 'temp_scale_idea4':
         T = torch.max(outputs).item() - torch.min(outputs).item()  # idea4
         Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
-        #print("Tmax: ", Tmax)
+        # print("Tmax: ", Tmax)
     else:
         sys.exit('Error! Please select a valid temperature scaling')
     # print("\nT: ", T)
@@ -392,15 +451,8 @@ def train_model(net, epoch, args):
     # optimizer = optim.Adam(net.parameters(), lr=cf.learning_rate(lr, epoch))
 
     # print out current state of the learning rate
-    print("\n\n param_group: ", optimizer.param_groups[0]['lr'])
+    print("\n\n Current LR: ", optimizer.param_groups[0]['lr'])
     current_lr = optimizer.param_groups[0]['lr']
-
-    # if current_lr < last_saved_lr:
-    #     #load_from_last_best = True
-    #     # Load last best saved model (Maybe not useful)
-    #     print("\nLoading last best saved model: ", saved_model_overall_best)
-    #     net = load_checkpoint(saved_model_overall_best)
-    #     last_saved_lr = current_lr
 
     print('\n=> Training Epoch #%d' % epoch)
     for batch_idx, data in enumerate(train_loader):
@@ -420,17 +472,7 @@ def train_model(net, epoch, args):
 
         # esla Experimental Idea: updating loss based on NLL for the incorrectly classified for every batch
         # loss_corr, loss_incorr, _, _ = decompose_loss(outputs, targets, predicted)
-        #
-        # threshold = 1.2
-        #
-        # if (loss_incorr / loss_corr) > threshold:
-        #     loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
-        # else:
-        #     loss = loss_incorr
-        #
-        # if math.isnan(loss):
-        #     print("\nIgnoring nan loss")
-        #     continue
+
 
         loss.backward()  # Backward Propagation
         optimizer.step()  # Optimizer update
@@ -460,9 +502,11 @@ def train_model(net, epoch, args):
 
     return metrics
 
+
 def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
-    #global best_accuracy, best_acc_ace, logits, true_labels, pred_labels
     global best_accuracy, best_balanced_accuracy, best_acc_ace, logits, true_labels, pred_labels
+    global save_point
+
     net.eval()
     net.training = False
     test_loss = 0
@@ -476,9 +520,6 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     all_preds = torch.LongTensor().cuda()
     all_img_paths = []
 
-    # dataframe to callect all results
-    columns = ['ImageNames', 'TrueLabels', 'Logits', 'SoftmaxValues', 'PredictedLabels', 'PredictedProbs']
-    df = pd.DataFrame(columns=columns)
 
     # metrics data structure
     metrics = {}
@@ -518,32 +559,6 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
         true_labels = all_targets.cpu().data.numpy().tolist()
         pred_labels = all_preds.cpu().data.numpy().tolist()
 
-    # targets = all_targets.type('torch.FloatTensor').view(len(all_targets), 1).cuda()
-    # preds = all_preds.type('torch.FloatTensor').view(len(all_preds), 1).cuda()
-    #
-    # temp_result = torch.cat([all_logits, targets, preds], 1)
-    #
-    # correct_cat = temp_result[:, :-1][temp_result[:, -1] == temp_result[:, -2]]
-    # incorrect_cat = temp_result[:, :-1][temp_result[:, -1] != temp_result[:, -2]]
-    #
-    # incorrect_outputs = incorrect_cat[:, :-1]
-    # #esla debugging
-    # print("incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0]",
-    #       incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0].shape)
-    # targets_for_incorrect = incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0].type('torch.LongTensor')
-    #
-    # correct_outputs = correct_cat[:, :-1]
-    # # esla debugging
-    # print("correct_cat[:, -1].view(1, len(incorrect_outputs))[0]",
-    #       correct_cat[:, -1].view(1, len(correct_outputs))[0].shape)
-    # targets_for_correct = correct_cat[:, -1].view(1, len(correct_outputs))[0].type('torch.LongTensor')
-    #
-    # loss_correctly_preds = criterion(correct_outputs, get_target_in_appropriate_format(args,targets_for_correct.cuda(),
-    #                                                                                    num_classes))
-    # loss_incorrectly_preds = criterion(incorrect_outputs, get_target_in_appropriate_format(args,
-    #                                                                                        targets_for_incorrect.cuda(),
-    #                                                                                        num_classes))
-
     loss_correctly_preds, loss_incorrectly_preds, _, _ = decompose_loss(all_logits, all_targets, all_preds)
 
     accuracy = get_topk_accuracy(all_logits, all_targets)[0].item()
@@ -551,9 +566,12 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
 
     max_softmax_scores = list(np.max(softmax_values, axis=1))
     # esla debug (alternative way to get the predicted labels
-    all_preds = list(all_preds.cpu().data.numpy())
+    #all_preds = list(all_preds.cpu().data.numpy())
     # ensure they are the same
     #assert all_preds != max_softmax_scores, 'These two must be the same'
+    # dataframe to callect all results
+
+    df = pd.DataFrame()
 
     df['ImageNames'] = all_img_paths
     df['TrueLabels'] = true_labels
@@ -599,10 +617,18 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
     print(val_report)
     
     if is_validation_mode:
-        print("\n| Validation Epoch #%d\t| Loss: %.4f | Corr Loss: %.4f | Incorr Loss: %.4f | Acc@1: %.2f%% | BalAcc@1: %.2f%% "
-            " | ECE_Total: %.6f | ECE_Pos: %.6f | ECE_Neg: %.6f | auc: %.2f%%" %
-            (epoch, test_loss / batch_idx, loss_correctly_preds.item(), loss_incorrectly_preds.item(), accuracy, balanced_accuracy, 
-             ece_results['ece_total'], ece_results['ece_pos_gap'], ece_results['ece_neg_gap'], auc))
+        loss = test_loss / batch_idx
+        loss_corr = loss_correctly_preds.item()
+        loss_incorr = loss_incorrectly_preds.item()
+        ece_total = ece_results['ece_total']
+        ece_pos = ece_results['ece_pos_gap']
+        ece_neg = ece_results['ece_neg_gap']
+
+        print(f"\n| Val. Epoch #{epoch}")
+        print(f"| Loss: {loss:.4f}  |  Corr Loss: {loss_corr:.4f}  |  Incorr Loss: {loss_incorr:.4f}")
+        print(f"| Acc: {accuracy:.2f} | Bal. Acc: {balanced_accuracy:.2f} | AUC: {auc:.2f} |")
+        print(f"| ECE Total: {ece_total:.4f}  |  ECE Pos: {ece_pos:.4f}  |  ECE Neg: {ece_neg:.4f}\n")
+
     else:
         print("\n| \t\t\t Acc@1: %.2f%% | BalAcc@1: %.2f%% | ECE: %.6f | auc: %.2f%%" %
               (accuracy, balanced_accuracy, ece_results['ece_total'], auc))
@@ -627,12 +653,11 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
                 'epoch': epoch,
             }
 
-            save_point = './checkpoint/' + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + os.sep
-
+            
             if not os.path.isdir(save_point):
                 os.mkdir(save_point)
 
-            saved_model_overall_best = save_point + file_name + '.pth'
+            #saved_model_overall_best = save_point + file_name + '.pth'
             saved_model_curr_best = save_point + file_name + '-epoch-' + str(epoch) + '.pth'
             print("Saving model: {}".format(saved_model_curr_best))
             torch.save(state, saved_model_curr_best)
@@ -648,6 +673,26 @@ def test_model(net, dataset_loader, epoch=None, is_validation_mode=False):
             best_balanced_accuracy = balanced_accuracy
 
     return df, logits, true_labels, pred_labels, metrics
+
+
+def get_focal_loss_parameters():
+    if args.alpha in ['None', '0.0', '0']:
+        alpha = None
+    else:
+        alpha = float(args.alpha) + (val_metrics['balanced_accuracy'] - 50.0) / 1000  # focal loss improvement idea 1
+    if args.train_loss_idea == 'ce':
+        gamma = 0.0
+    elif args.train_loss_idea == 'loss_idea1':
+        gamma = 10 * val_metrics['ece_pos_gap']  # loss idea 1
+    elif args.train_loss_idea == 'loss_idea2':
+        gamma = val_metrics['test_loss_incorrects']  # loss idea 2
+    elif args.train_loss_idea == 'loss_idea3':
+        gamma = val_metrics['test_loss_incorrects'] + 10 * val_metrics['ece_total']  # loss idea 3
+    elif args.train_loss_idea == 'loss_idea4':
+        gamma = val_metrics['test_loss_incorrects'] + 10 * val_metrics['ece_pos_gap']  # loss idea 4
+    else:
+        sys.exit('Error!, Choose a valid training loss idea')
+    return alpha, gamma
 
 
 if __name__ == '__main__':
@@ -681,7 +726,7 @@ if __name__ == '__main__':
     training_group.add_argument('--estimate_lr', '-lre',action='store_true', help='Use LR Finder to get rough estimate of start lr')
     training_group.add_argument('--resume_from_model', '-rm', help='Model to load to resume training from')
     training_group.add_argument('--lr', default=0.001, type=float, help='learning_rate')
-    training_group.add_argument('--alpha', '-a', default=None, type=float, help='alpha value for focal loss')
+    training_group.add_argument('--alpha', '-a', default=None, type=str, help='alpha value for focal loss')
     training_group.add_argument('--lr_scheduler', type=str, help='Select the LR scheduler')
     training_group.add_argument('--batch_size', default=32, type=int, help='training batch size')
     training_group.add_argument('--net_type', default='wide-resnet', type=str, help='model')
@@ -732,14 +777,15 @@ if __name__ == '__main__':
     best_acc = 0
     best_accuracy = 0
     best_balanced_accuracy = 0
-    #start_epoch, num_epochs, batch_size, optim_type = cf.start_epoch, cf.num_epochs, cf.batch_size, cf.optim_type
+
     start_epoch, num_epochs, optim_type = cf.start_epoch, cf.num_epochs, cf.optim_type
 
     # Optimizers
     # optimizer = optim.SGD(net.parameters(), lr=cf.learning_rate(args.lr, epoch), momentum=0.9, weight_decay=5e-4)
 
     # misc variables
-    experiment_dir = datetime.now().strftime("%d-%b-%Y-%H_%M_%S.%f")
+    experiment_dir = datetime.now().strftime("%d-%b-%Y-%H_%M_%S.%f")[:-3]
+    save_point = ''
 
     # Transformations
     aug = dict(hflip=False, vflip=False, rotation=0, shear=0, scale=1.0, color_contrast=0, color_saturation=0,
@@ -816,11 +862,11 @@ if __name__ == '__main__':
             transforms.Normalize(augs.mean, augs.std)
         ]),
         'val': transforms.Compose([
-            transforms.Grayscale(num_output_channels=3),
+            # transforms.Grayscale(num_output_channels=3),
             # ClaheTransform(),
             # transforms.ToPILImage(),
-            transforms.Resize(augs.size),
-            transforms.CenterCrop(augs.size),
+            transforms.Resize(augs.size, augs.size),
+            # transforms.CenterCrop(augs.size),
             transforms.ToTensor(),
             transforms.Normalize(augs.mean, augs.std)
         ]),
@@ -831,27 +877,28 @@ if __name__ == '__main__':
             ClaheTransform(),
             transforms.ToPILImage(),
             torchvision.transforms.ColorJitter(hue=.05, saturation=.05),
-            transforms.Grayscale(num_output_channels=3),
+            #transforms.Grayscale(num_output_channels=3),
             # transforms.Resize(augs.size),
-            RandomZeroPaddedSquareResizeTransform(square_crop_size=224), # my augmentation idea 1
-            transforms.RandomResizedCrop(augs.size, scale=(0.55, 1.0)),
-            # transforms.ColorJitter(brightness=(0.2, 3)),
+            #RandomZeroPaddedSquareResizeTransform(square_crop_size=224), # my augmentation idea 1
+            transforms.CenterCrop(512),
+            transforms.RandomResizedCrop(augs.size, scale=(0.8, 1.0)),
+            transforms.ColorJitter(brightness=(0.2, 3)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(augs.mean, augs.std)
         ]),
         'val': transforms.Compose([
-            transforms.Grayscale(num_output_channels=3),
+            #transforms.Grayscale(num_output_channels=3),
             ClaheTransform(),
             transforms.ToPILImage(),
-            transforms.Resize(augs.size),
-            transforms.CenterCrop(augs.size),
+            transforms.CenterCrop(512),
+            transforms.Resize((augs.size, augs.size)),
+            #transforms.CenterCrop(augs.size),
+            #RandomZeroPaddedSquareResizeTransform(square_crop_size=224),
             transforms.ToTensor(),
             transforms.Normalize(augs.mean, augs.std)
         ]),
     }
-
-
 
     # Select the appropriate data transformation
     if args.data_transform == 'data_transform1':
@@ -875,86 +922,84 @@ if __name__ == '__main__':
     # Data Uplaod
     print('\n[Phase 1] : Data Preparation')
 
-    if args.dataset == 'cifar10_orig':
-        if is_training:
-            print("| Preparing CIFAR-10 dataset...")
-            sys.stdout.write("| ")
-            train_set = torchvision.datasets.CIFAR10(root='./data', train=True, download=True,
-                                                     transform=augs.no_augmentation)
-            val_set = torchvision.datasets.CIFAR10(root='./data', train=False, download=False,
-                                                   transform=augs.no_augmentation)
-        num_classes = 10
-        aug['size'] = 32
-        assert train_set and val_set is not None, "Please ensure that you have valid train and val dataset formats"
-        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
-        val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=4)
-        #val_loader_lr_est = torch.utils.data.DataLoader(val_set_lr_est, batch_size=batch_size, shuffle=False,
-        #                                                num_workers=4)
-    elif args.dataset == 'cifar100_orig':
-        if is_training:
+    if is_training:
+
+        if args.dataset == 'cifar10_orig':
+            if is_training:
+                print("| Preparing CIFAR-10 dataset...")
+                sys.stdout.write("| ")
+                train_set = torchvision.datasets.CIFAR10(root='./data', train=True, download=True,
+                                                         transform=augs.no_augmentation)
+                val_set = torchvision.datasets.CIFAR10(root='./data', train=False, download=False,
+                                                       transform=augs.no_augmentation)
+            aug['size'] = 32
+            assert train_set and val_set is not None, "Please ensure that you have valid train and val dataset formats"
+
+        elif args.dataset == 'cifar100_orig':
             print("| Preparing CIFAR-100 dataset...")
             sys.stdout.write("| ")
             train_set = torchvision.datasets.CIFAR100(root='./data', train=True, download=True,
-                                                      transform=augs.tf_transform)
+                                                          transform=augs.tf_transform)
             val_set = torchvision.datasets.CIFAR100(root='./data', train=False, download=False,
-                                                    transform=augs.no_augmentation)
-        num_classes = 100
-        aug['size'] = 32
-        assert train_set and val_set is not None, "Please ensure that you have valid train and val dataset formats"
-        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
-        val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=4)
-        #val_loader_lr_est = torch.utils.data.DataLoader(val_set_lr_est, batch_size=batch_size, shuffle=False,
-        #                                                num_workers=4)
+                                                        transform=augs.no_augmentation)
+            aug['size'] = 32
+            assert train_set and val_set is not None, "Please ensure that you have valid train and val dataset formats"
 
-    elif args.dataset_class_type == "class_folders":
-        if is_training:
+        elif dataset_class_type == "class_folders":
             train_root = datasets_root_dir + "/train"
             val_root = datasets_root_dir + "/val"
-            if dataset_class_type == "class_folders":
-                #train_set = FolderDatasetWithImgPath(train_root, transform=data_transforms['train'])
-                #val_set = FolderDatasetWithImgPath(val_root, transform=data_transforms['val'])
-                train_set = FolderDatasetWithImgPath(train_root, transform=train_transform)
-                val_set = FolderDatasetWithImgPath(val_root, transform=val_transform)
-                val_set_lr_est = torchvision.datasets.ImageFolder(train_root, transform=val_transform)
-                print("class info: {}".format(train_set.class_to_idx))
-            elif dataset_class_type == "csv files":
-                train_csv = csv_root_dir + "/" + args.dataset + "_train.csv"
-                val_csv = csv_root_dir + "/" + args.dataset + "_val.csv"
-                train_set = CSVDataset(root=train_root, csv_file=train_csv, image_field='image_path', target_field='NV',
-                                       transform=augs.train_transform)
-                val_set = CSVDatasetWithName(root=val_root, csv_file=val_csv, image_field='image_path',
-                                             target_field='NV',
-                                             transform=val_transform)
-            else:
-                sys.exit("Should never be reached!!! Check dtaset_class_type argument")
-            # Ensure all datasets for training have equal number of classes
-            assert len(train_set.class_to_idx) == len(val_set.class_to_idx), 'Check train and val dataset directories'
-            num_classes = len(train_set.class_to_idx)
+            train_set = FolderDatasetWithImgPath(train_root, transform=train_transform)
+            val_set = FolderDatasetWithImgPath(val_root, transform=val_transform)
+            print("class info: {}".format(train_set.class_to_idx))
 
-            assert train_set and val_set is not None, "Please ensure that you have valid train and val dataset formats"
-            train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
-            val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=4)
-            val_loader_lr_est = torch.utils.data.DataLoader(val_set_lr_est, batch_size=batch_size, shuffle=False, num_workers=4)
+        elif dataset_class_type == "csv_files_":
+            train_root = datasets_root_dir + "/train"
+            val_root = datasets_root_dir + "/val"
+            train_csv = csv_root_dir + "/" + args.dataset + "_train.csv"
+            val_csv = csv_root_dir + "/" + args.dataset + "_val.csv"
+            train_set = CSVDataset(root=train_root, csv_file=train_csv, image_field='image_path', target_field='NV',
+                                   transform=augs.train_transform)
+            val_set = CSVDatasetWithName(root=val_root, csv_file=val_csv, image_field='image_path', target_field='NV',
+                                         transform=val_transform)
+        # elif dataset_class_type == "csv_files_2":
+        #
+        #     train_dataset = PlantDataset(data=train_data, transforms=transforms["train_transforms"],
+        #                                 soft_labels_filename=None
+        #     )
+        #     val_dataset = PlantDataset(data=val_data, transforms=transforms["val_transforms"],
+        #         soft_labels_filename=None
+        #     )
+        else:
+            sys.exit("Should never be reached!!! Check dtaset_class_type argument")
 
-        if is_inference:
-            inference_root = args.inference_dataset_dir
-            if dataset_class_type == "class_folders":
-                inference_set = FolderDatasetWithImgPath(inference_root, transform=val_transform)
-            elif dataset_class_type == "csv files":
-                inference_csv = inference_root + "/" + "isic2019_val.csv"
-                inference_set = CSVDatasetWithName(root=inference_root, csv_file=inference_csv, image_field='image_path',
-                                                   target_field='NV', transform=val_transform)
-            else:
-                sys.exit("Should never be reached!!! Check dtaset_class_type argument")
-            # ensure the inference format matches that of training.
-            # To Do: In the case of inference for unlabeled dataset, one has to present the dataset in the same
-            # format as for the training and validation. This needs to be improved
-            assert len(inference_set.class_to_idx) > 1, """Current implementation requires inference data to be in the same 
-                                                            directory structure as the test and val datasets"""
-            num_classes = len(inference_set.class_to_idx)
-            assert inference_set is not None, "Please ensure that you have valid inference dataset formats"
-            inference_loader = torch.utils.data.DataLoader(inference_set, batch_size=batch_size, shuffle=False,
+        # Get the data loaders for training
+        num_classes = len(train_set.class_to_idx)
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, num_workers=8,
+                                                   sampler=ImbalancedDatasetSampler(train_set))
+        #train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=False,
+        #                                               num_workers=4)
+        val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=8)
+
+    elif is_inference:
+        inference_root = args.inference_dataset_dir
+        if dataset_class_type == "class_folders":
+            inference_set = FolderDatasetWithImgPath(inference_root, transform=val_transform)
+        elif dataset_class_type == "csv files":
+            inference_csv = inference_root + "/" + "isic2019_val.csv"
+            inference_set = CSVDatasetWithName(root=inference_root, csv_file=inference_csv, image_field='image_path',
+                                               target_field='NV', transform=val_transform)
+        else:
+            sys.exit("Should never be reached!!! Check dtaset_class_type argument")
+        # ensure the inference format matches that of training.
+        # To Do: In the case of inference for unlabeled dataset, one has to present the dataset in the same
+        # format as for the training and validation. This needs to be improved
+        assert len(inference_set.class_to_idx) > 1, """Current implementation requires inference data to be in the same 
+                                                        directory structure as the test and val datasets"""
+        num_classes = len(inference_set.class_to_idx)
+        assert inference_set is not None, "Please ensure that you have valid inference dataset formats"
+        inference_loader = torch.utils.data.DataLoader(inference_set, batch_size=batch_size, shuffle=False,
                                                        num_workers=4)
+
     else:
         sys.exit("ERROR! This place should never be reached")
 
@@ -962,18 +1007,19 @@ if __name__ == '__main__':
     if not os.path.isdir('checkpoint'):
         os.mkdir('checkpoint')
 
-    if not os.path.isdir('checkpoint/' + experiment_dir) and is_training:
-        #os.mkdir('checkpoint/' + experiment_dir)
-        os.makedirs("checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/")
 
-        exp_conf_file = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_setting.txt"
+    exp_name = "_".join([experiment_dir, args.net_type, args.dataset, str(args.input_image_size)])
+    save_point = './checkpoint/' + exp_name + os.sep
+
+
+    if not os.path.isdir(save_point) and is_training:
+        os.makedirs(save_point)
+
+        exp_conf_file = os.path.join(save_point, "training_settings.txt")
         with open(exp_conf_file, 'a+') as f:
             f.write('\n'.join(sys.argv[1:]))
     
-    # get the appropriate loss criterion for training
-    #if not args.inference_only:
-    
-    criterion = get_loss_criterion(args, gamma=0, alpha=args.alpha)
+    criterion = get_loss_criterion(args, gamma=0, alpha=eval(args.alpha))
 
     if args.inference_only:
         print('\n[Inference Phase] : Model setup')
@@ -1000,28 +1046,20 @@ if __name__ == '__main__':
         # write results
         dataset_category = 'inference'
         experiment_dir = result_filename
-<<<<<<< HEAD
         os.makedirs("inference_results" + "/" + experiment_dir)
         if args.validate_train_dataset:
-            # filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference_train_dataset.csv"
             filename = "checkpoint" + "/" + experiment_dir + "/" + "inference_train_dataset.csv"
             prefix_result_file = args.dataset + "-" + str(
                 args.input_image_size) + '_' + dataset_category + '_' + net_name + 'validated_train_dataset'
         else:
             filename = "inference_results" + "/" + experiment_dir + "/" + "inference.csv"
-            # filename = "/inference_results/" + result_filename+ ".csv"
-            # prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
-=======
+
         os.makedirs("inference_results" + "/" + experiment_dir )
         if args.validate_train_dataset:
-            #filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "inference_train_dataset.csv"
             filename = "checkpoint" + "/" + experiment_dir + "/" + "inference_train_dataset.csv"
             prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name + 'validated_train_dataset'
         else:
             filename = "inference_results" + "/" + experiment_dir + "/" + "inference.csv"
-            #filename = "/inference_results/" + result_filename+ ".csv"
-            #prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
->>>>>>> 23859e2c8a745309e6ae52b965b76fcdf57601c7
             prefix_result_file = experiment_dir
             print("On {}".format(filename))
         with open(filename, 'a+') as infile:
@@ -1029,9 +1067,6 @@ if __name__ == '__main__':
             csv_writer.writerow(list(metrics.values()))
 
         # Save results to files
-        # dataset_category = 'inference'
-        # prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name
-        # all_results_df.to_csv(prefix_result_file + ".csv")
         all_results_df.to_csv(filename)
 
         if args.validate_train_dataset:
@@ -1070,85 +1105,38 @@ if __name__ == '__main__':
     # get the appropriate loss criterion for training
     #criterion = get_loss_criterion(args, gamma=0, alpha=args.alpha)
 
-
     print('\n[Phase 3] : Training model')
     print('| Training Epochs = ' + str(num_epochs))
     print('| Initial Learning Rate = ' + str(args.lr))
     print('| Optimizer = ' + str(optim_type))
 
     elapsed_time = 0
-    
-    if args.estimate_lr:
-        assert dataset_class_type == "class_folders", 'This only works for class folder dataset type'
-        # previous weight_decay = 5e-4
-        # another one to try weight_decay=1e-2)
-        #optimizer = optim.SGD(net.parameters(), lr=get_learning_rate(args, epoch), momentum=0.9, weight_decay=5e-4)
-        optimizer = optim.Adam(net.parameters(), lr=1e-7)
-        lr_finder = LRFinder(net, optimizer, criterion, device="cuda")
-        #lr_finder.range_test(train_loader, end_lr=100, num_iter=100, step_mode="exp")
-        lr_finder.range_test(train_loader, val_loader=val_loader_lr_est, end_lr=1, num_iter=50, step_mode="exp")
-        lr_finder.plot()
-        #print(lr_finder.history)
-        filename = "checkpoint" + "/" + experiment_dir + "-" +  args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "lr_estimate_log.csv"
-        with open(filename, 'w') as outfile:
-            csv_writer = csv.writer(outfile, dialect='excel')
-            csv_writer.writerow(['lr', 'loss'])
-            lr, loss = lr_finder.history.values()
-            for i in range(len(loss)):
-                #print(loss[i], lr[i])
-                csv_writer.writerow([lr[i], loss[i]])
-
-        lr_finder.reset()
-        sys.exit()
 
     for epoch in range(start_epoch, start_epoch + num_epochs):
         start_time = time.time()
 
+        # perform one epoch of training
         train_metrics = train_model(net, epoch, args)
+
         # validate_model(net, epoch)
         df, logits, true_labels, pred_labels, val_metrics = test_model(net, val_loader, epoch, is_validation_mode=True)
 
-        
-        # idea: update the gamma in a focal loss (Experimental)
-        #print('esla debug1')
-        # temporarily hard code alpha
-        #alpha = 0.018
-        if args.alpha is not None:
-            alpha = args.alpha + (val_metrics['balanced_accuracy'] - 50.0) / 1000  # focal loss improvement idea 1
-        else:
-            alpha = None
+        alpha, gamma = get_focal_loss_parameters()
 
-        if args.train_loss_idea == 'ce':
-            gamma = 0.0
-        elif args.train_loss_idea == 'loss_idea1':
-            gamma = 10*val_metrics['ece_pos_gap']   # loss idea 1
-        elif args.train_loss_idea == 'loss_idea2':
-            gamma = val_metrics['test_loss_incorrects']  # loss idea 2
-        elif args.train_loss_idea == 'loss_idea3':
-            gamma = val_metrics['test_loss_incorrects'] + 10*val_metrics['ece_total'] # loss idea 3
-        elif args.train_loss_idea == 'loss_idea4':
-            gamma = val_metrics['test_loss_incorrects'] + 10*val_metrics['ece_pos_gap'] # loss idea 4
-        else:
-            sys.exit('Error!, Choose a valid training loss idea')
-
-        if args.alpha is None:
-            print("alpha: ", args.alpha)
-        else:
-            print("alpha: ", alpha)
-        print("gamma:, ", gamma)
+        print(f"\n Next alpha value: {alpha}")
+        print(f" Next gamma value: {gamma}")
 
         criterion = get_loss_criterion(args, gamma=gamma, alpha=alpha)
 
         # write results
-        filename = "checkpoint" + "/" + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + "/" + "training_log.csv"
+        filename = os.path.join(save_point, "training_log.csv")
         with open(filename, 'a+') as infile:
             csv_writer = csv.writer(infile, dialect='excel')
             if epoch == 1:
-                csv_writer.writerow(['epoch', 'train_acc', 'train_loss', 'val_acc', 'val_bal_acc', 
-                                    'val_loss', 'val_corr_loss', 'val_incorr_loss', 'val_auc', 'val_ece_total', 'val_ece_pos', 'val_ece_neg'])
+                csv_writer.writerow([epoch] + list(train_metrics.keys()) + list(val_metrics.keys()))
             csv_writer.writerow([epoch] + list(train_metrics.values()) + list(val_metrics.values()))
 
-        filename = 'checkpoint/' + experiment_dir + "-" + args.net_type + "-" + args.dataset + "-" + str(args.input_image_size) + '/' + args.net_type + '-' + str(epoch) + '-' + 'val'
+        filename = save_point + args.net_type + '-' + str(epoch) + '-' + 'val'
 
         with open(filename + '.logits', 'wb') as f:
             pickle.dump((true_labels, pred_labels, logits), f)

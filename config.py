@@ -67,27 +67,28 @@ def learning_rate_mtd2(initial_lr, epoch):
         initial_lr = 0.0001
     return initial_lr
 
-def learning_rate_mtd4(initial_lr, epoch):
-    if epoch < 20:
+
+def learning_rate_mtd4(initial_lr, epoch, power_factor=1):
+    if epoch < 10:
         initial_lr = initial_lr
-    if epoch >= 20:
-        initial_lr = 0.04
-    if epoch >40:
-        initial_lr = 0.01
+    if epoch >= 10:
+        initial_lr = 0.01*power_factor
+    if epoch >20:
+        initial_lr = 0.008*power_factor
+    if epoch > 30:
+        initial_lr = 0.001*power_factor
+    if epoch > 40:
+        initial_lr = 0.0008*power_factor
+    if epoch > 50:
+        initial_lr = 0.0004*power_factor
     if epoch > 60:
-        initial_lr = 0.008
+        initial_lr = 0.0001*power_factor
+    if epoch > 70:
+        initial_lr = 0.00004*power_factor
     if epoch > 80:
-        initial_lr = 0.001
-    if epoch > 100:
-        initial_lr = 0.0004
-    if epoch > 120:
-        initial_lr = 0.0001
-    if epoch > 140:
-        initial_lr = 0.00004
-    if epoch > 160:
-        initial_lr = 0.00001
-    if epoch > 180:
-        initial_lr = 0.000008
+        initial_lr = 0.00001*power_factor
+    if epoch > 90:
+        initial_lr = 0.000008*power_factor
     return initial_lr
 
 
@@ -102,6 +103,32 @@ def learning_rate_mtd3(initial_lr, epoch):
         return 0.001
     else:
         return 0.0001
+
+
+def learning_rate_mtd5(initial_lr, epoch, power_factor=1):
+    if epoch < 15:
+        initial_lr = initial_lr
+    if epoch >= 15:
+        initial_lr = 0.01*power_factor
+    if epoch >30:
+        initial_lr = 0.008*power_factor
+    if epoch > 45:
+        initial_lr = 0.001*power_factor
+    if epoch > 60:
+        initial_lr = 0.0008*power_factor
+    if epoch > 75:
+        initial_lr = 0.0004*power_factor
+    if epoch > 90:
+        initial_lr = 0.0001*power_factor
+    if epoch > 105:
+        initial_lr = 0.00004*power_factor
+    if epoch > 120:
+        initial_lr = 0.00001*power_factor
+    if epoch > 120:
+        initial_lr = 0.000008*power_factor
+    return initial_lr
+
+
 
 def get_hms(seconds):
     m, s = divmod(seconds, 60)

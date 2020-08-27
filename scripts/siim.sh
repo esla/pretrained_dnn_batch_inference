@@ -1,20 +1,18 @@
 #!/bin/bash
 
-#sleep 2h;
-
 python main.py \
 	--learning_type='focal_loss_target'	\
-	--input_image_size=224   \
-	--datasets_class_folders_root_dir=/home/esla/research/datasets/siim/exp_datasets/cropped_from_1024/dataset_seed1337  	\
-        --dataset_class_type='class_folders'	\
-        --data_transform='data_transform5'	\
-        --train_loss_idea='loss_idea1'	\
-        --temp_scale_idea='temp_scale_default'	\
-	--lr=0.8	\
-	--alpha=0.017	\
-	--lr_scheduler='mtd2'     \
+	--input_image_size=456   \
+	--datasets_class_folders_root_dir=/home/esla/research/datasets/siim/exp_datasets/1024_dataset 	\
+    	--dataset_class_type='class_folders'	\
+    	--data_transform='data_transform5'	\
+    	--train_loss_idea='loss_idea1'	\
+    	--temp_scale_idea='temp_scale_default'	\
+	--lr=0.05	\
+	--alpha=None	\
+	--lr_scheduler='mtd5'     \
 	--batch_size=32   \
-	--net_type=resnext50_32x4d	\
+	--net_type=efficientnet-b5	\
 	--dropout=0	\
 	--dataset=siim	\
 	--resume_from_model=''  \
