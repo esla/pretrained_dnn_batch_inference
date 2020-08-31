@@ -433,13 +433,13 @@ def perform_temperature_scaling(outputs):
     return outputs, T, Tmax
 
 
-def train_model(net, optimizer, epoch, args):
+def train_model(net, optimizer, scheduler, epoch, args):
     global last_saved_lr, load_from_last_best, current_lr
     net.train()
     net.training = True
     train_loss = 0
-    correct = 0
     total = 0
+    correct = 0
     # lr = cf.learning_rate(args.lr, epoch)
     #lr = args.lr
 
@@ -475,6 +475,9 @@ def train_model(net, optimizer, epoch, args):
 
         loss.backward()  # Backward Propagation
         optimizer.step()  # Optimizer update
+
+        if args.lr_scheduling_mtd != 'custom':
+            scheduler.step()    
 
         train_loss += loss.item()
         total += targets.size(0)
@@ -883,13 +886,14 @@ if __name__ == '__main__':
         'train': transforms.Compose([
             ClaheTransform(),
             transforms.ToPILImage(),
-            torchvision.transforms.ColorJitter(hue=.05, saturation=.05),
+            #torchvision.transforms.ColorJitter(hue=.05, saturation=.05),
             #transforms.Grayscale(num_output_channels=3),
+            transforms.RandomGrayscale(p=0.5),
             # transforms.Resize(augs.size),
             #RandomZeroPaddedSquareResizeTransform(square_crop_size=224), # my augmentation idea 1
-            transforms.CenterCrop(512),
+            #transforms.CenterCrop(512),
             transforms.RandomResizedCrop(augs.size, scale=(0.8, 1.0)),
-            transforms.ColorJitter(brightness=(0.2, 3)),
+            #transforms.ColorJitter(brightness=(0.02, 2)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(augs.mean, augs.std)
@@ -898,9 +902,10 @@ if __name__ == '__main__':
             #transforms.Grayscale(num_output_channels=3),
             ClaheTransform(),
             transforms.ToPILImage(),
-            transforms.CenterCrop(512),
+            #transforms.CenterCrop(512),
             transforms.Resize((augs.size, augs.size)),
             #transforms.CenterCrop(augs.size),
+            transforms.RandomResizedCrop(augs.size, scale=(0.9, 1.0)),
             #RandomZeroPaddedSquareResizeTransform(square_crop_size=224),
             transforms.ToTensor(),
             transforms.Normalize(augs.mean, augs.std)
@@ -983,8 +988,8 @@ if __name__ == '__main__':
         num_classes = len(train_set.class_to_idx)
         #train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, num_workers=8,
         #                                           sampler=ImbalancedDatasetSampler(train_set))
-        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=False,
-                                                       num_workers=4)
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True,
+                                                       num_workers=8)
         val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=8)
 
     elif is_inference:
@@ -1084,8 +1089,8 @@ if __name__ == '__main__':
         sys.exit(0)
 
     # To quickly visualize the effect of transforms from the dataloader
-    # for i in range(500):
-    #     show_dataloader_images(train_loader, augs, i, is_save=False, save_dir="./sample_images")
+    #for i in range(50):
+    #    show_dataloader_images(train_loader, augs, i, is_save=False, save_dir="./sample_images")
 
     # Model
     print('\n[Phase 2] : Model setup')
@@ -1113,9 +1118,11 @@ if __name__ == '__main__':
     # get the appropriate loss criterion for training
     #criterion = get_loss_criterion(args, gamma=0, alpha=args.alpha)
 
-    steps = 10
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0, weight_decay=5e-4)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, steps)
+    #steps = 10
+    #optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0, weight_decay=5e-4)
+    #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, steps)
+    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+    scheduler = optim.lr_scheduler.CyclicLR(optimizer, base_lr=0.0001, max_lr=0.1,step_size_up=10000, step_size_down=None, mode='triangular')
 
 
     print('\n[Phase 3] : Training model')
@@ -1129,7 +1136,7 @@ if __name__ == '__main__':
         start_time = time.time()
 
         # perform one epoch of training
-        train_metrics = train_model(net, optimizer, epoch, args)
+        train_metrics = train_model(net, optimizer, scheduler, epoch, args)
 
         # validate_model(net, epoch)
         df, logits, true_labels, pred_labels, val_metrics = test_model(net, val_loader, epoch, is_validation_mode=True)
