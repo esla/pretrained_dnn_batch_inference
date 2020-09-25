@@ -5,5 +5,6 @@
     <mapping directory="$PROJECT_DIR$/experimental_dl_codes/Loss_ToolBox-PyTorch" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/experimental_dl_codes/RetinaNet" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/experimental_dl_codes/focal_loss_pytorch" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/external_libs/temperature_scaling" vcs="Git" />
   </component>
 </project>

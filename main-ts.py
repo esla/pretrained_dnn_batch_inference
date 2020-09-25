@@ -6,7 +6,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
+
 import torch.backends.cudnn as cudnn
 import config as cf
 
@@ -37,10 +37,11 @@ from auglib.augmentation_pytorch.augmentations import Augmentations
 from auglib.dataset_loader import CSVDataset, CSVDatasetWithName
 
 # Metrics
-from keras.utils.np_utils import to_categorical
-from calibration.temp_api import get_adaptive_ece
-from sklearn.metrics import roc_auc_score, balanced_accuracy_score
-from sklearn.metrics import classification_report, confusion_matrix
+# from keras.utils.np_utils import to_categorical
+# from calibration.temp_api import get_adaptive_ece
+# from sklearn.metrics import roc_auc_score, balanced_accuracy_score
+from model_evaluation.model_evaluator import ModelEvaluator
+from model_evaluation.eval_utils import get_target_in_appropriate_format, temperature_scale
 
 from collections import Counter
 
@@ -59,47 +60,6 @@ from experimental_dl_codes.other_transforms import ClaheTransform, RandomZeroPad
 
 # Config
 import config as cf
-
-
-def get_topk_accuracy(outputs, targets, topk=(1,)):
-    """Computes the precision@k for the specified values of k"""
-    maxk = max(topk)
-    batch_size = targets.size(0)
-
-    _, pred = outputs.topk(maxk, 1, True, True)
-    pred = pred.t()
-    correct = pred.eq(targets.view(1, -1).expand_as(pred))
-
-    result = []
-    for k in topk:
-        correct_k = correct[:k].view(-1).float().sum(0)
-        result.append(correct_k.mul_(100.0 / batch_size))
-    return result
-
-
-def get_one_hot_embedding(labels, num_classes):
-    """Embedding labels to one-hot form.
-
-    Args:
-      labels: (LongTensor) class labels, sized [N,].
-      num_classes: (int) number of classes.
-
-    Returns:
-      (tensor) encoded labels, sized [N, #classes].
-    """
-    y = torch.eye(num_classes)
-    if num_classes == 1:
-        return y.cuda()
-    return y[labels].cuda()
-
-
-def get_target_in_appropriate_format(args, targets, num_classes):
-    if args.learning_type in ['multi_class', 'focal_loss_target']:
-        return targets
-    elif args.learning_type in ['multi_label', 'focal_loss_ohe']:
-        return get_one_hot_embedding(targets, num_classes)
-    else:
-        sys.exit("Unknown learning task type")
 
 
 def get_loss_criterion(args, gamma, alpha):
@@ -153,38 +113,6 @@ def get_network_32(args, num_classes):  # To Do: Currently works only for num_cl
         print('Error : Wrong Network selected for this input size')
         sys.exit(0)
     return net, file_name
-
-
-def decompose_loss(logits, targets, predictions):
-    # convert the type for targets to allow for concatenation with logits tesnsor
-    targets = targets.type('torch.FloatTensor').view(len(targets), 1).cuda()
-    predictions = predictions.type('torch.FloatTensor').view(len(predictions), 1).cuda()
-
-    temp_result = torch.cat([logits, targets, predictions], 1)
-
-    correct_cat = temp_result[:, :-1][temp_result[:, -1] == temp_result[:, -2]]
-    incorrect_cat = temp_result[:, :-1][temp_result[:, -1] != temp_result[:, -2]]
-
-    incorrect_outputs = incorrect_cat[:, :-1]
-    # esla debugging
-    # print("incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0]",
-    #       incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0].shape)
-    targets_for_incorrect = incorrect_cat[:, -1].view(1, len(incorrect_outputs))[0].type('torch.LongTensor')
-
-    correct_outputs = correct_cat[:, :-1]
-    # # esla debugging
-    # print("correct_cat[:, -1].view(1, len(incorrect_outputs))[0]",
-    #       correct_cat[:, -1].view(1, len(correct_outputs))[0].shape)
-
-    # convert the type for targets back to torch.LongTensor
-    targets_for_correct = correct_cat[:, -1].view(1, len(correct_outputs))[0].type('torch.LongTensor')
-
-    loss_correctly_preds = criterion(correct_outputs, get_target_in_appropriate_format(args, targets_for_correct.cuda(),
-                                                                                       num_classes))
-    loss_incorrectly_preds = criterion(incorrect_outputs, get_target_in_appropriate_format(args,
-                                                                                           targets_for_incorrect.cuda(),
-                                                                                           num_classes))
-    return loss_correctly_preds, loss_incorrectly_preds, correct_outputs, incorrect_outputs
 
 
 # Return network and file name
@@ -401,38 +329,6 @@ def show_images(inp, full_img_name, augs, is_save, title):
         plt.show()
 
 
-def perform_temperature_scaling(outputs):
-    if args.temp_scale_idea == 'temp_scale_default':
-        Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
-        # print("Tmax: ", Tmax)
-        T = 1
-    elif args.temp_scale_idea == 'temp_scale_idea1':
-        T = torch.max(torch.FloatTensor.abs(outputs)).item()  # idea2
-        Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
-        # print("Tmax: ", Tmax)
-    elif args.temp_scale_idea == 'temp_scale_idea2':
-        T = torch.max(outputs).item()  # idea2
-        Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
-        # print("Tmax: ", Tmax)
-    elif args.temp_scale_idea == 'temp_scale_idea3':
-        Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()  # idea2
-        if Tmax < 4:  # idea 3
-            T = 1
-        else:
-            T = Tmax
-        Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
-        # print("Tmax: ", Tmax)
-    elif args.temp_scale_idea == 'temp_scale_idea4':
-        T = torch.max(outputs).item() - torch.min(outputs).item()  # idea4
-        Tmax = torch.max(torch.FloatTensor.abs(outputs)).item()
-        # print("Tmax: ", Tmax)
-    else:
-        sys.exit('Error! Please select a valid temperature scaling')
-    # print("\nT: ", T)
-    outputs = torch.mul(outputs, 2.0 / T)
-    return outputs, T, Tmax
-
-
 def train_model(net, optimizer, scheduler, epoch, args):
     global last_saved_lr, load_from_last_best, current_lr
     net.train()
@@ -461,17 +357,12 @@ def train_model(net, optimizer, scheduler, epoch, args):
         optimizer.zero_grad()
         inputs, targets = Variable(inputs), Variable(targets)
         outputs = net(inputs)  # Forward Propagation
-        _, predicted = torch.max(outputs.data, 1)
+        pred_probs, pred_labels = torch.max(outputs.data, 1)
 
-        #outputs_t, T, Tmax = perform_temperature_scaling(outputs)
-
-        #print("outputs1: ", outputs)
-        # esla temporarily commented out to test experimental idea below
         loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
 
         # esla Experimental Idea: updating loss based on NLL for the incorrectly classified for every batch
-        # loss_corr, loss_incorr, _, _ = decompose_loss(outputs, targets, predicted)
-
+        # loss_corr, loss_incorr, _, _ = decompose_loss(outputs, targets, pred_labels, criterion)
 
         loss.backward()  # Backward Propagation
         optimizer.step()  # Optimizer update
@@ -479,21 +370,15 @@ def train_model(net, optimizer, scheduler, epoch, args):
         if args.lr_scheduling_mtd != 'custom':
             scheduler.step()
 
-
         train_loss += loss.item()
         total += targets.size(0)
-        correct += predicted.eq(targets.data).cpu().sum()
+        correct += pred_labels.eq(targets.data).cpu().sum()
 
         sys.stdout.write('\r')
-        #if math.isnan(Tmax):
-        if True:
-            sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d] \t\t Loss: %.4f Acc@1: %.3f%% '
+
+        sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d] \t\t Loss: %.4f Acc@1: %.3f%% '
                          % (epoch, num_epochs, batch_idx + 1,
-                            (len(train_set) // batch_size) + 1, loss.item(), 100. * correct / total))
-        else:
-            sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d] |%3d |%3d\t\t Loss: %.4f Acc@1: %.3f%%'
-                         % (epoch, num_epochs, batch_idx + 1,
-                            (len(train_set) // batch_size) + 1, T, Tmax, loss.item(), 100. * correct / total))
+                        (len(train_set) // batch_size) + 1, loss.item(), 100. * correct / total))
 
         sys.stdout.flush()
 
@@ -516,16 +401,7 @@ def test_model(net, dataset_loader, class_dict, epoch=None, is_validation_mode=F
     correct = 0
     total = 0
 
-    # esla adding
-    all_softmax_values = torch.FloatTensor().cuda()
-    all_logits = torch.FloatTensor().cuda()
-    all_targets = torch.LongTensor().cuda()
-    all_preds = torch.LongTensor().cuda()
-    all_img_paths = []
-
-
-    # metrics data structure
-    metrics = {}
+    evaluator = ModelEvaluator(criterion, class_dict, args, with_image_names=True)
 
     with torch.no_grad():
         for batch_idx, data in enumerate(dataset_loader):
@@ -535,105 +411,44 @@ def test_model(net, dataset_loader, class_dict, epoch=None, is_validation_mode=F
             inputs, targets = Variable(inputs), Variable(targets)
             outputs = net(inputs)
 
+            # Do temperature scaling here
+            outputs = temperature_scale(outputs, 1.25)
+
             if is_validation_mode:
-                #loss = criterion(outputs, get_one_hot_embedding(targets, num_classes))  # Loss for multi-label loss
+                # loss = criterion(outputs, get_one_hot_embedding(targets, num_classes))  # Loss for multi-label loss
                 loss = criterion(outputs, get_target_in_appropriate_format(args, targets, num_classes))
                 test_loss += loss.item()
 
             softmax_scores = F.softmax(outputs, dim=1)
-            _, predicted = torch.max(softmax_scores.data, 1)
+            pred_probs, pred_labels = torch.max(softmax_scores.data, 1)
             total += targets.size(0)
-            correct += predicted.eq(targets.data).cpu().sum()
+            correct += pred_labels.eq(targets.data).cpu().sum()
 
-            # esla adding the concatenation of all logits results
-            all_img_paths.extend(img_names)
-            all_softmax_values = torch.cat((all_softmax_values, softmax_scores), 0)
-            all_logits = torch.cat((all_logits, outputs), 0)
-            all_targets = torch.cat((all_targets, targets), 0)
-            all_preds = torch.cat((all_preds, predicted), 0)
+            # Update Evaluator instance for evaluations
+            evaluator.update_results(outputs, targets, img_names)
 
             sys.stdout.write('\r')
             sys.stdout.write('| Epoch [%3d/%3d] ' % (batch_idx, len(dataset_loader)))
             sys.stdout.flush()
 
-        torch.cuda.synchronize()
-        logits = all_logits.cpu().data.numpy().tolist()
-        softmax_values = all_softmax_values.cpu().data.numpy().tolist()
-        true_labels = all_targets.cpu().data.numpy().tolist()
-        pred_labels = all_preds.cpu().data.numpy().tolist()
+    # Compute various evaluation metrics
+    df_raw_vals, metrics, per_class_accs = evaluator.compute_all_metrics
+    print(metrics)
 
-    loss_correctly_preds, loss_incorrectly_preds, _, _ = decompose_loss(all_logits, all_targets, all_preds)
+    loss_corr = metrics['test_loss_corrects']
+    loss_incorr = metrics['test_loss_incorrects']
+    ece_total = metrics['ece_total']
+    ece_pos = metrics['ece_pos_gap']
+    ece_neg = metrics['ece_neg_gap']
+    accuracy = metrics['accuracy']
+    balanced_accuracy = metrics['balanced_accuracy']
+    auc = metrics['auc']
 
-    accuracy = get_topk_accuracy(all_logits, all_targets)[0].item()
-
-
-    max_softmax_scores = list(np.max(softmax_values, axis=1))
-    # esla debug (alternative way to get the predicted labels
-    #all_preds = list(all_preds.cpu().data.numpy())
-    # ensure they are the same
-    #assert all_preds != max_softmax_scores, 'These two must be the same'
-    # dataframe to callect all results
-
-    df = pd.DataFrame()
-
-    df['ImageNames'] = all_img_paths
-    df['TrueLabels'] = true_labels
-    df['SoftmaxValues'] = softmax_values
-    df['Logits'] = logits
-    df['PredictedLabels'] = pred_labels
-    df['PredictedProbs'] = max_softmax_scores
-
-    # compute Adaptive ECE
-    ece_results = get_adaptive_ece(true_labels, pred_labels, max_softmax_scores)
-
-    # balanced accuracy score
-    balanced_accuracy = balanced_accuracy_score(true_labels, pred_labels)
-    true_labels_1_hot = to_categorical(true_labels, num_classes)
-    auc = roc_auc_score(true_labels_1_hot, softmax_values)
-
-    # TBD: get this into a metrics data structure and return it if testing labeled datasets
-    #accuracy = 100. * correct / total
-    #accuracy = accuracy.cpu().data.numpy()
-    balanced_accuracy = balanced_accuracy * 100
-    auc = auc * 100
-
-    # get the results
-    metrics['accuracy'] = accuracy
-    metrics['balanced_accuracy'] = balanced_accuracy
-    metrics['test_loss'] = test_loss / batch_idx
-    metrics['test_loss_corrects'] = loss_correctly_preds.item()
-    metrics['test_loss_incorrects'] = loss_incorrectly_preds.item()
-    metrics['auc'] = auc
-    metrics['ece_total'] = ece_results['ece_total']
-    metrics['ece_pos_gap'] = ece_results['ece_pos_gap']
-    metrics['ece_neg_gap'] = ece_results['ece_neg_gap']
-
-    # Accuracy per class
-    cm = confusion_matrix(true_labels, pred_labels)
-    cm = cm.astype('float') / cm.sum(axis=1)[:,np.newaxis]
-    print("\nclass accuracies")
-    #print("\n\n")
-    acc_per_class_vals = cm.diagonal()
-    acc_per_class = {}
-    for i, class_name in  enumerate(class_dict):
-        acc_per_class[class_name] = 100.0 * round(acc_per_class_vals[i], 2)
-    print(acc_per_class)
-        
-
-    # Print validation report
-    #val_report = classification_report(true_labels, pred_labels, target_names=train_set.class_to_idx.keys())
-    #print("type for val_report", type(val_report))
-    #print(val_report)
-    
     if is_validation_mode:
         loss = test_loss / batch_idx
-        loss_corr = loss_correctly_preds.item()
-        loss_incorr = loss_incorrectly_preds.item()
-        ece_total = ece_results['ece_total']
-        ece_pos = ece_results['ece_pos_gap']
-        ece_neg = ece_results['ece_neg_gap']
-
-        print('-'*60)
+        # loss_corr = loss_correctly_preds.item()
+        # loss_incorr = loss_incorrectly_preds.item()
+        print('-' * 60)
         print(f"| Val. Epoch #{epoch}")
         print('-' * 60)
         print(f"| Loss: {loss:.4f}  |  Corr Loss: {loss_corr:.4f}  |  Incorr Loss: {loss_incorr:.4f}")
@@ -642,10 +457,10 @@ def test_model(net, dataset_loader, class_dict, epoch=None, is_validation_mode=F
 
     else:
         print("\n| \t\t\t Acc@1: %.2f%% | BalAcc@1: %.2f%% | ECE: %.6f | auc: %.2f%%" %
-              (accuracy, balanced_accuracy, ece_results['ece_total'], auc))
+              (accuracy, balanced_accuracy, ece_total, auc))
 
-    if is_validation_mode:
-        #if accuracy > best_accuracy  or accuracy  - metrics['test_loss_incorrects'] > best_acc_ace:  # stopping criteria idea 2
+    if is_validation_mode and not args.inference_only:
+        # if accuracy > best_accuracy  or accuracy  - metrics['test_loss_incorrects'] > best_acc_ace:  # stopping criteria idea 2
         if (balanced_accuracy > best_balanced_accuracy or accuracy > best_accuracy or accuracy -
                 metrics['test_loss_incorrects'] > best_acc_ace):  # stopping criteria idea 2
 
@@ -664,26 +479,25 @@ def test_model(net, dataset_loader, class_dict, epoch=None, is_validation_mode=F
                 'epoch': epoch,
             }
 
-            
             if not os.path.isdir(save_point):
                 os.mkdir(save_point)
 
-            #saved_model_overall_best = save_point + file_name + '.pth'
+            # saved_model_overall_best = save_point + file_name + '.pth'
             saved_model_curr_best = save_point + file_name + '-epoch-' + str(epoch) + '.pth'
-            #print("Saving model: {}".format(saved_model_curr_best))
+            # print("Saving model: {}".format(saved_model_curr_best))
             torch.save(state, saved_model_curr_best)
-            #print("Saving model: {}".format(saved_model_overall_best))
-            #torch.save(state, saved_model_overall_best)
+            # print("Saving model: {}".format(saved_model_overall_best))
+            # torch.save(state, saved_model_overall_best)
             val_csv_file = save_point + file_name + '-epoch-' + str(epoch) + '-' + suffix + '.csv'
-            #print("saving validation results: {}".format(val_csv_file))
-            df.to_csv(val_csv_file)
+            # print("saving validation results: {}".format(val_csv_file))
+            df_raw_vals.to_csv(val_csv_file)
 
             best_accuracy = accuracy  # default stopping criteria idea
             # best_accuracy = (accuracy/100) - metrics['ece_total']  # stopping criteria idea 1
             best_acc_ace = accuracy - metrics['test_loss_incorrects']  # stopping criteria idea 2
             best_balanced_accuracy = balanced_accuracy
 
-    return df, logits, true_labels, pred_labels, metrics
+    return df_raw_vals, metrics
 
 
 def get_focal_loss_parameters():
@@ -716,7 +530,7 @@ if __name__ == '__main__':
     inference_only_group = parser.add_argument_group("test-only params")
 
     # task type arguments
-    task_selection_group.add_argument('--learning_type', default='multi-class', type=str, help=""" to select the kind of
+    task_selection_group.add_argument('--learning_type', default='multi_class', type=str, help=""" to select the kind of
                                                                                                learning""")
     # dataset parameters group arguments
     dataset_params_group.add_argument('--input_image_size', type=int, help='input image size for the network')
@@ -733,7 +547,8 @@ if __name__ == '__main__':
 
     training_group.add_argument('--validate_train_dataset', '-t', action='store_true', help='resume from checkpoint')
     training_group.add_argument('--resume_training', '-r', action='store_true', help='resume from checkpoint')
-    training_group.add_argument('--estimate_lr', '-lre',action='store_true', help='Use LR Finder to get rough estimate of start lr')
+    training_group.add_argument('--estimate_lr', '-lre',action='store_true', help='Use LR Finder to get rough '
+                                                                                  'estimate of start lr')
     training_group.add_argument('--resume_from_model', '-rm', help='Model to load to resume training from')
     training_group.add_argument('--lr', default=0.001, type=float, help='learning_rate')
     training_group.add_argument('--alpha', '-a', default=None, type=str, help='alpha value for focal loss')
@@ -751,13 +566,15 @@ if __name__ == '__main__':
     inference_only_group.add_argument('--inference_model', '-im', help='Model to load for inference')
     inference_only_group.add_argument("--inference_dataset_dir", "-idir",
                                       help="root directory for inference class folders or CSV files")
-    inference_only_group.add_argument('--inference_filename', '-ifn', type=str, help='file name to save inference results')
+    inference_only_group.add_argument('--inference_filename', '-ifn', type=str, help='file name to save inference '
+                                                                                     'results')
 
     args = parser.parse_args()
 
     # Ensure the datasets root directory is valid
     if args.dataset not in ['cifar10', 'cifar100', 'ba4_project']:
-        assert os.path.isdir(args.datasets_class_folders_root_dir), 'Please provide a valid root directory for all datasets'
+        assert os.path.isdir(args.datasets_class_folders_root_dir), 'Please provide a valid root directory for all ' \
+                                                                    'datasets'
 
     datasets_root_dir = args.datasets_class_folders_root_dir
     csv_root_dir = args.datasets_csv_root_dir
@@ -1022,10 +839,8 @@ if __name__ == '__main__':
     if not os.path.isdir('checkpoint'):
         os.mkdir('checkpoint')
 
-
     exp_name = "_".join([experiment_dir, args.net_type, args.dataset, str(args.input_image_size)])
     save_point = './checkpoint/' + exp_name + os.sep
-
 
     if not os.path.isdir(save_point) and is_training:
         os.makedirs(save_point)
@@ -1036,13 +851,51 @@ if __name__ == '__main__':
     
     criterion = get_loss_criterion(args, gamma=0, alpha=eval(args.alpha))
 
-
     if args.inference_only:
         print('\n[Inference Phase] : Model setup')
 
-        import external_libs.temperature_scaling.api as api
+        # For TS Model
+        # results_file_name = "temperature_scaling_res"
+        # net_name = "densenet"
+        # result_filename = "pre-trained-nets"
+        #
+        # from external_libs.temperature_scaling.models import DenseNet
+        # growth_rate = 12
+        # depth = 40
+        #
+        # # Get densenet configuration
+        # if (depth - 4) % 3:
+        #     raise Exception('Invalid depth')
+        # block_config = [(depth - 4) // 6 for _ in range(3)]
+        #
+        # model = DenseNet(
+        #     growth_rate=growth_rate,
+        #     block_config=block_config,
+        #     num_classes=10
+        # )
+        #
+        # # Load model state dict
+        # save = "./external_libs/temperature_scaling/results"
+        # model_filename = os.path.join(save, 'model.pth')
+        # if not os.path.exists(model_filename):
+        #     raise RuntimeError('Cannot find file %s to load' % model_filename)
+        # state_dict = torch.load(model_filename)
+        #
+        # # Load validation indices
+        # valid_indices_filename = os.path.join(save, 'valid_indices.pth')
+        # if not os.path.exists(valid_indices_filename):
+        #     raise RuntimeError('Cannot find file %s to load' % valid_indices_filename)
+        # valid_indices = torch.load(valid_indices_filename)
+        #
+        # model.load_state_dict(state_dict)
+        # # Wrap model if multiple gpus
+        # if torch.cuda.device_count() > 1:
+        #     net = torch.nn.DataParallel(model).cuda()
+        # else:
+        #     net = model.cuda()
+        #print(net)
 
-        net = api.get_model()
+
 
         checkpoint_file = args.inference_model
         assert os.path.exists(checkpoint_file) and os.path.isfile(
@@ -1053,25 +906,31 @@ if __name__ == '__main__':
         checkpoint = torch.load(checkpoint_file)
         net = checkpoint['model']
         #net = torch.load(checkpoint_file)
-
-
-
-        if use_cuda:
-            net.cuda()
-            net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
-            cudnn.benchmark = True
+        #
+        #
+        #
+        # if use_cuda:
+        #     net.cuda()
+        #     net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
+        #     cudnn.benchmark = True
 
         print('\n=> Inference in Progress')
         if args.validate_train_dataset:
-            all_results_df, logits, true_labels, pred_labels, metrics = test_model(net, inference_loader,
-                                                                                   is_validation_mode=True)
+            all_results_df, metrics = test_model(net, inference_loader, class_dict, is_validation_mode=True)
         else:
-            all_results_df, logits, true_labels, pred_labels, metrics = test_model(net, inference_loader, class_dict)
+            all_results_df, metrics = test_model(net, inference_loader, class_dict)
+
+        logits = all_results_df['Logits']
+        true_labels = all_results_df['TrueLabels']
+        pred_labels = all_results_df['PredictedLabels']
 
         # write results
         dataset_category = 'inference'
         experiment_dir = result_filename
-        os.makedirs("inference_results" + "/" + experiment_dir)
+        if os.path.exists("inference_results" + "/" + experiment_dir):
+            pass
+        else:
+            os.makedirs("inference_results" + "/" + experiment_dir)
         if args.validate_train_dataset:
             filename = "checkpoint" + "/" + experiment_dir + "/" + "inference_train_dataset.csv"
             prefix_result_file = args.dataset + "-" + str(
@@ -1080,13 +939,14 @@ if __name__ == '__main__':
             filename = "inference_results" + "/" + experiment_dir + "/" + "inference.csv"
 
         #os.makedirs("inference_results" + "/" + experiment_dir )
-        if args.validate_train_dataset:
+        if args.validate_train_dataset and not args.inference_only:
             filename = "checkpoint" + "/" + experiment_dir + "/" + "inference_train_dataset.csv"
             prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name + 'validated_train_dataset'
         else:
             filename = "inference_results" + "/" + experiment_dir + "/" + "inference.csv"
             prefix_result_file = experiment_dir
             print("On {}".format(filename))
+
         with open(filename, 'a+') as infile:
             csv_writer = csv.writer(infile, dialect='excel')
             csv_writer.writerow(list(metrics.values()))
@@ -1101,7 +961,7 @@ if __name__ == '__main__':
         sys.exit(0)
 
     # To quickly visualize the effect of transforms from the dataloader
-    #for i in range(50):
+    # for i in range(50):
     #    show_dataloader_images(train_loader, augs, i, is_save=False, save_dir="./sample_images")
 
     # Model
@@ -1151,7 +1011,10 @@ if __name__ == '__main__':
         train_metrics = train_model(net, optimizer, scheduler, epoch, args)
 
         # validate_model(net, epoch)
-        df, logits, true_labels, pred_labels, val_metrics = test_model(net, val_loader, class_dict, epoch, is_validation_mode=True)
+        df_raw_val,  val_metrics = test_model(net, val_loader, class_dict, epoch, is_validation_mode=True)
+        logits = df_raw_val['Logits']
+        true_labels = df_raw_val['TrueLabels']
+        pred_labels = df_raw_val['PredictedLabels']
 
         alpha, gamma = get_focal_loss_parameters()
 

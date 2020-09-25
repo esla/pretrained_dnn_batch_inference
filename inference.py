@@ -152,7 +152,7 @@ if __name__ == "__main__":
                                       help='Root dir for all dataset')
     dataset_params_group.add_argument('--datasets_csv_root_dir', '-csv_dir', help='Root dir for all dataset csv files')
     dataset_params_group.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/cifar100]')
-    dataset_params_group.add_argument('--data_transform', type=str, help='The dataset transform to be used')
+    #dataset_params_group.add_argument('--data_transform', type=str, help='The dataset transform to be used')
 
     args = parser.parse_args()
 
@@ -225,6 +225,7 @@ if __name__ == "__main__":
     #     with open(prefix_result_file + '.logits', 'wb') as f:
     #         pickle.dump((true_labels, pred_labels, logits), f)
 
-    prepare_siim_submission(prefix_result_file + "_all_results.csv", prefix_result_file + '_submission.csv')
+    # For Kaggle SIIM competition
+    #prepare_siim_submission(prefix_result_file + "_all_results.csv", prefix_result_file + '_submission.csv')
 
 
