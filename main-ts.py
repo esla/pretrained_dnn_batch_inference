@@ -37,9 +37,6 @@ from auglib.augmentation_pytorch.augmentations import Augmentations
 from auglib.dataset_loader import CSVDataset, CSVDatasetWithName
 
 # Metrics
-# from keras.utils.np_utils import to_categorical
-# from calibration.temp_api import get_adaptive_ece
-# from sklearn.metrics import roc_auc_score, balanced_accuracy_score
 from model_evaluation.model_evaluator import ModelEvaluator
 from model_evaluation.eval_utils import get_target_in_appropriate_format, temperature_scale
 

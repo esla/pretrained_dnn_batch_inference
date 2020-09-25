@@ -1,4 +1,4 @@
-from keras.utils.np_utils import to_categorical
+#from keras.utils.np_utils import to_categorical
 from calibration.temp_api import get_adaptive_ece
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score
 
