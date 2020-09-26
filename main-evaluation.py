@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import warnings
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 import torch
@@ -29,7 +30,7 @@ import torchvision.models as models
 from efficientnet_pytorch import EfficientNet
 
 from torch.utils.data import WeightedRandomSampler
-#from torchsampler import ImbalancedDatasetSampler
+# from torchsampler import ImbalancedDatasetSampler
 
 
 from auglib.dataset_loader import FolderDatasetWithImgPath
@@ -76,7 +77,7 @@ def get_loss_criterion(args, gamma, alpha):
 def get_network_32(args, num_classes):  # To Do: Currently works only for num_classes = 10
     if args.net_type == 'lenet':
         net = LeNet(num_classes)
-        #net = LeNet()
+        # net = LeNet()
         file_name = 'lenet'
 
     elif 'VGG' in args.net_type.upper():
@@ -170,7 +171,7 @@ def get_network_224(args, num_classes):
     elif args.net_type == 'squeezenet1_1':
         file_name = args.net_type
         net = models.squeezenet1_1(pretrained=False)
-        net.classifier[1] = nn.Conv2d(512, num_classes, kernel_size=(1,1), stride=(1,1))
+        net.classifier[1] = nn.Conv2d(512, num_classes, kernel_size=(1, 1), stride=(1, 1))
         net.num_classes = num_classes
 
     elif args.net_type == 'densenet121':
@@ -229,22 +230,22 @@ class MelanomaEfficientNet(nn.Module):
 
     def forward(self, x):
         features = self.pool_type(self.backbone.extract_features(x), 1)
-        features = features.view(x.size(0),-1)
-        #print(features.shape)
+        features = features.view(x.size(0), -1)
+        # print(features.shape)
         return self.classifier(features)
 
 
-#def get_model(model_name='efficientnet-b0', lr=1e-5, wd=0.01, freeze_backbone=False, opt_fn=torch.optim.AdamW,
+# def get_model(model_name='efficientnet-b0', lr=1e-5, wd=0.01, freeze_backbone=False, opt_fn=torch.optim.AdamW,
 #              device=None):
 def get_model(args, num_classes, freeze_backbone=False):
-    #device = device if device else get_device()
-    model = MelanomaEfficientNet(model_name=args.net_type,  num_classes=num_classes)
+    # device = device if device else get_device()
+    model = MelanomaEfficientNet(model_name=args.net_type, num_classes=num_classes)
     if freeze_backbone:
         for parameter in model.backbone.parameters():
             parameter.requires_grad = False
-    #opt = opt_fn(model.parameters(), lr=lr, weight_decay=wd)
+    # opt = opt_fn(model.parameters(), lr=lr, weight_decay=wd)
     if use_cuda:
-        #model = model.to(device)
+        # model = model.to(device)
         model = model.cuda()
     return model, args.net_type
 
@@ -254,7 +255,7 @@ def get_network(args, num_classes):
     efficientnet_model_names = ["efficientnet-b" + str(i) for i in range(9)]
 
     if args.net_type in efficientnet_model_names:
-        #return get_efficientnet_network(args, num_classes, pre_trained=False)
+        # return get_efficientnet_network(args, num_classes, pre_trained=False)
         return get_model(args, num_classes)
 
     if args.input_image_size == 32:
@@ -294,18 +295,18 @@ def get_class_weights(dataset):
 
     # Assign the weight of each class to all the samples
     class_weights_all = class_weights[target_list]
-    #print(class_weights_all)
+    # print(class_weights_all)
     return class_weights_all
 
 
 def show_dataloader_images(data_loader, augs, idx, is_save=False, save_dir="./sample_images"):
     # Get a batch of training data
     (inputs, targets), img_names = next(iter(data_loader))
-    #print(inputs.size())
-    #print(img_names)
+    # print(inputs.size())
+    # print(img_names)
     # Make a grid from batch
     out = torchvision.utils.make_grid(inputs)
-    full_img_name = os.path.join(save_dir, str(idx)+".png")
+    full_img_name = os.path.join(save_dir, str(idx) + ".png")
     show_images(out, full_img_name, augs, is_save=True, title=[x for x in img_names])
 
 
@@ -334,11 +335,10 @@ def train_model(net, optimizer, scheduler, epoch, args):
     total = 0
     correct = 0
     # lr = cf.learning_rate(args.lr, epoch)
-    #lr = args.lr
+    # lr = args.lr
 
     # metrics
     metrics = {}
-
 
     # optimizer = optim.Adam(net.parameters(), lr=cf.learning_rate(lr, epoch))
 
@@ -375,7 +375,7 @@ def train_model(net, optimizer, scheduler, epoch, args):
 
         sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d] \t\t Loss: %.4f Acc@1: %.3f%% '
                          % (epoch, num_epochs, batch_idx + 1,
-                        (len(train_set) // batch_size) + 1, loss.item(), 100. * correct / total))
+                            (len(train_set) // batch_size) + 1, loss.item(), 100. * correct / total))
 
         sys.stdout.flush()
 
@@ -409,7 +409,7 @@ def test_model(net, dataset_loader, class_dict, epoch=None, is_validation_mode=F
             outputs = net(inputs)
 
             # Do temperature scaling here
-            #outputs = temperature_scale(outputs, 1.25)
+            # outputs = temperature_scale(outputs, 1.25)
 
             if is_validation_mode:
                 # loss = criterion(outputs, get_one_hot_embedding(targets, num_classes))  # Loss for multi-label loss
@@ -430,7 +430,7 @@ def test_model(net, dataset_loader, class_dict, epoch=None, is_validation_mode=F
 
     # Compute various evaluation metrics
     df_raw_vals, metrics, per_class_accs = evaluator.compute_all_metrics
-    #print(metrics)
+    # print(metrics)
 
     loss_corr = metrics['test_loss_corrects']
     loss_incorr = metrics['test_loss_incorrects']
@@ -532,11 +532,11 @@ if __name__ == '__main__':
     # dataset parameters group arguments
     dataset_params_group.add_argument('--input_image_size', type=int, help='input image size for the network')
     dataset_params_group.add_argument('--dataset_class_type', '-dct', help='The class type for the dataset')
-    dataset_params_group.add_argument('--datasets_class_folders_root_dir', '-folders_dir', help='Root dir for all dataset')
+    dataset_params_group.add_argument('--datasets_class_folders_root_dir', '-folders_dir',
+                                      help='Root dir for all dataset')
     dataset_params_group.add_argument('--datasets_csv_root_dir', '-csv_dir', help='Root dir for all dataset csv files')
     dataset_params_group.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/cifar100]')
     dataset_params_group.add_argument('--data_transform', type=str, help='The dataset transform to be used')
-
 
     # Ideas that I am exploring
     training_group.add_argument('--train_loss_idea', '-tl', type=str, help='Select the training loss idea to use')
@@ -544,8 +544,8 @@ if __name__ == '__main__':
 
     training_group.add_argument('--validate_train_dataset', '-t', action='store_true', help='resume from checkpoint')
     training_group.add_argument('--resume_training', '-r', action='store_true', help='resume from checkpoint')
-    training_group.add_argument('--estimate_lr', '-lre',action='store_true', help='Use LR Finder to get rough '
-                                                                                  'estimate of start lr')
+    training_group.add_argument('--estimate_lr', '-lre', action='store_true', help='Use LR Finder to get rough '
+                                                                                   'estimate of start lr')
     training_group.add_argument('--resume_from_model', '-rm', help='Model to load to resume training from')
     training_group.add_argument('--lr', default=0.001, type=float, help='learning_rate')
     training_group.add_argument('--alpha', '-a', default=None, type=str, help='alpha value for focal loss')
@@ -621,7 +621,7 @@ if __name__ == '__main__':
     aug['mean'], aug['std'] = cf.mean[args.dataset], cf.std[args.dataset]
 
     augs = Augmentations(**aug)
-    
+
     # Temporary transformations (temp trans1)
     # Data Uplaod
     # data_transform1
@@ -631,7 +631,7 @@ if __name__ == '__main__':
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(augs.mean, augs.std),
-    ]) # meanstd transformation
+    ])  # meanstd transformation
 
     transform_test = transforms.Compose([
         transforms.ToTensor(),
@@ -644,7 +644,7 @@ if __name__ == '__main__':
     # data_transform2
     data_transforms2 = {
         'train': transforms.Compose([
-            #transforms.Resize(augs.size),
+            # transforms.Resize(augs.size),
             transforms.RandomResizedCrop(augs.size),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -657,12 +657,12 @@ if __name__ == '__main__':
             transforms.Normalize(augs.mean, augs.std)
         ]),
     }
-    
+
     data_transforms3 = {
         'train': transforms.Compose([
             transforms.Resize(augs.size),
             transforms.RandomResizedCrop(augs.size),
-            #transforms.RandomHorizontalFlip(),
+            # transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(augs.mean, augs.std)
         ]),
@@ -701,27 +701,27 @@ if __name__ == '__main__':
         'train': transforms.Compose([
             ClaheTransform(),
             transforms.ToPILImage(),
-            #torchvision.transforms.ColorJitter(hue=.05, saturation=.05),
-            #transforms.Grayscale(num_output_channels=3),
+            # torchvision.transforms.ColorJitter(hue=.05, saturation=.05),
+            # transforms.Grayscale(num_output_channels=3),
             transforms.RandomGrayscale(p=0.5),
             # transforms.Resize(augs.size),
-            #RandomZeroPaddedSquareResizeTransform(square_crop_size=224), # my augmentation idea 1
-            #transforms.CenterCrop(512),
+            # RandomZeroPaddedSquareResizeTransform(square_crop_size=224), # my augmentation idea 1
+            # transforms.CenterCrop(512),
             transforms.RandomResizedCrop(augs.size, scale=(0.8, 1.0)),
-            #transforms.ColorJitter(brightness=(0.02, 2)),
+            # transforms.ColorJitter(brightness=(0.02, 2)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(augs.mean, augs.std)
         ]),
         'val': transforms.Compose([
-            #transforms.Grayscale(num_output_channels=3),
+            # transforms.Grayscale(num_output_channels=3),
             ClaheTransform(),
             transforms.ToPILImage(),
-            #transforms.CenterCrop(512),
+            # transforms.CenterCrop(512),
             transforms.Resize((augs.size, augs.size)),
-            #transforms.CenterCrop(augs.size),
+            # transforms.CenterCrop(augs.size),
             transforms.RandomResizedCrop(augs.size, scale=(0.9, 1.0)),
-            #RandomZeroPaddedSquareResizeTransform(square_crop_size=224),
+            # RandomZeroPaddedSquareResizeTransform(square_crop_size=224),
             transforms.ToTensor(),
             transforms.Normalize(augs.mean, augs.std)
         ]),
@@ -766,9 +766,9 @@ if __name__ == '__main__':
             print("| Preparing CIFAR-100 dataset...")
             sys.stdout.write("| ")
             train_set = torchvision.datasets.CIFAR100(root='./data', train=True, download=True,
-                                                          transform=augs.tf_transform)
+                                                      transform=augs.tf_transform)
             val_set = torchvision.datasets.CIFAR100(root='./data', train=False, download=False,
-                                                        transform=augs.no_augmentation)
+                                                    transform=augs.no_augmentation)
             aug['size'] = 32
             assert train_set and val_set is not None, "Please ensure that you have valid train and val dataset formats"
 
@@ -802,10 +802,10 @@ if __name__ == '__main__':
         # Get the data loaders for training
         num_classes = len(train_set.class_to_idx)
         class_dict = train_set.class_to_idx.keys()
-        #train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, num_workers=8,
+        # train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, num_workers=8,
         #                                           sampler=ImbalancedDatasetSampler(train_set))
         train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True,
-                                                       num_workers=8)
+                                                   num_workers=8)
         val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=8)
 
     elif is_inference:
@@ -845,7 +845,7 @@ if __name__ == '__main__':
         exp_conf_file = os.path.join(save_point, "training_settings.txt")
         with open(exp_conf_file, 'a+') as f:
             f.write('\n'.join(sys.argv[1:]))
-    
+
     criterion = get_loss_criterion(args, gamma=0, alpha=eval(args.alpha))
 
     if args.inference_only:
@@ -902,7 +902,7 @@ if __name__ == '__main__':
 
         checkpoint = torch.load(checkpoint_file)
         net = checkpoint['model']
-        #net = torch.load(checkpoint_file)
+        # net = torch.load(checkpoint_file)
         #
         #
         #
@@ -941,7 +941,8 @@ if __name__ == '__main__':
 
         if args.validate_train_dataset and not args.inference_only:
             filename = "checkpoint" + "/" + experiment_dir + "/" + "inference_train_dataset.csv"
-            prefix_result_file = args.dataset + "-" + str(args.input_image_size) + '_' + dataset_category + '_' + net_name + 'validated_train_dataset'
+            prefix_result_file = args.dataset + "-" + str(
+                args.input_image_size) + '_' + dataset_category + '_' + net_name + 'validated_train_dataset'
         else:
             filename = "inference_results" + "/" + experiment_dir + "/" + "inference.csv"
             prefix_result_file = experiment_dir
@@ -988,14 +989,14 @@ if __name__ == '__main__':
         cudnn.benchmark = True
 
     # get the appropriate loss criterion for training
-    #criterion = get_loss_criterion(args, gamma=0, alpha=args.alpha)
+    # criterion = get_loss_criterion(args, gamma=0, alpha=args.alpha)
 
-    #steps = 10
-    #optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0, weight_decay=5e-4)
-    #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, steps)
+    # steps = 10
+    # optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0, weight_decay=5e-4)
+    # scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, steps)
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
-    scheduler = optim.lr_scheduler.CyclicLR(optimizer, base_lr=0.000001, max_lr=0.01,step_size_up=10000, step_size_down=None, mode='triangular')
-
+    scheduler = optim.lr_scheduler.CyclicLR(optimizer, base_lr=0.000001, max_lr=0.01, step_size_up=10000,
+                                            step_size_down=None, mode='triangular')
 
     print('\n[Phase 3] : Training model')
     print('| Training Epochs = ' + str(num_epochs))
@@ -1011,7 +1012,7 @@ if __name__ == '__main__':
         train_metrics = train_model(net, optimizer, scheduler, epoch, args)
 
         # validate_model(net, epoch)
-        df_raw_val,  val_metrics = test_model(net, val_loader, class_dict, epoch, is_validation_mode=True)
+        df_raw_val, val_metrics = test_model(net, val_loader, class_dict, epoch, is_validation_mode=True)
         logits = df_raw_val['Logits']
         true_labels = df_raw_val['TrueLabels']
         pred_labels = df_raw_val['PredictedLabels']

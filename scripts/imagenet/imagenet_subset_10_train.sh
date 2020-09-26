@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #CUDA_VISIBLE_DEVICES=0 
-python main.py \
+python main-ts.py \
 	--learning_type='multi_class'	\
 	--input_image_size=224   \
 	--datasets_class_folders_root_dir=/home/esla/datasets/imagenet/subset-10  	\
